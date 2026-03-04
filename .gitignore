@@ -43,8 +43,8 @@ npm-debug.log*
 *.AppImage
 *.app
 
-# ===== Comate specs (optional, keep if you want) =====
-# .comate/
+# ===== Comate =====
+.comate/
 
 # ===== Temp files =====
 *.tmp
