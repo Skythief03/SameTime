@@ -3,7 +3,7 @@ import { ref, onUnmounted } from "vue";
 export function useVoice(
   sendFn: (msg: Record<string, unknown>) => void,
   roomId: string,
-  userId: string
+  _userId: string
 ) {
   const peers = ref<Map<string, RTCPeerConnection>>(new Map());
   const localStream = ref<MediaStream | null>(null);

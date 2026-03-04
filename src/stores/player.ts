@@ -1,5 +1,5 @@
 import { defineStore } from "pinia";
-import { ref, computed, onUnmounted } from "vue";
+import { ref, computed } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 
 export const usePlayerStore = defineStore("player", () => {
