@@ -1,0 +1,51 @@
+# ===== Node.js =====
+node_modules/
+dist/
+*.local
+
+# ===== Rust =====
+**/target/
+**/*.rs.bk
+Cargo.lock
+!server/Cargo.lock
+
+# ===== Tauri =====
+src-tauri/target/
+src-tauri/gen/schemas/
+
+# ===== IDE =====
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# ===== Environment =====
+.env
+.env.local
+.env.*.local
+
+# ===== Data & Uploads =====
+server/data/
+server/data/**
+
+# ===== Logs =====
+*.log
+npm-debug.log*
+
+# ===== Build artifacts =====
+*.dmg
+*.msi
+*.exe
+*.deb
+*.AppImage
+*.app
+
+# ===== Comate specs (optional, keep if you want) =====
+# .comate/
+
+# ===== Temp files =====
+*.tmp
+*.bak
