@@ -16,11 +16,16 @@
 ```bash
 cd server
 
-# 设置环境变量（可选，也可在 docker-compose.yml 中直接修改）
-export JWT_SECRET=your-strong-secret-here
+# 生成安全配置文件（首次部署时执行）
+echo "JWT_SECRET=$(openssl rand -base64 48)" > .env
+echo "SAMETIME_PORT=9527" >> .env
+echo "SAMETIME_HOST=0.0.0.0" >> .env
 
-# 构建并启动
-docker compose up -d
+# 查看生成的配置
+cat .env
+
+# 加载配置并启动
+source .env && docker compose up -d
 
 # 查看运行状态
 docker compose ps
@@ -47,17 +52,47 @@ cargo build --release
 # 创建数据目录
 mkdir -p data/uploads
 
-# 设置环境变量
-export SAMETIME_HOST=0.0.0.0
-export SAMETIME_PORT=8080
-export DATABASE_URL="sqlite:./data/sametime.db?mode=rwc"
-export UPLOAD_DIR=./data/uploads
-export JWT_SECRET=your-strong-secret-here
-export MAX_FILE_SIZE=10737418240  # 10GB
+# 生成安全配置文件（首次部署时执行一次）
+cat > .env << 'EOF'
+SAMETIME_HOST=0.0.0.0
+SAMETIME_PORT=9527
+DATABASE_URL=sqlite:./data/sametime.db?mode=rwc
+UPLOAD_DIR=./data/uploads
+MAX_FILE_SIZE=10737418240
+JWT_EXPIRY_HOURS=168
+EOF
+echo "JWT_SECRET=$(openssl rand -base64 48)" >> .env
 
-# 启动服务
-./target/release/sametime-server
+# 查看当前配置
+cat .env
+
+# 加载配置并启动
+source .env && ./target/release/sametime-server
 ```
+
+> 💡 后续重启只需 `source .env && ./target/release/sametime-server`，无需重新生成密钥。
+
+### `.env` 配置文件管理
+
+`.env` 文件存放在 `server/` 目录下，包含所有运行时配置。
+
+```bash
+# 查看当前配置
+cat server/.env
+
+# 修改某项配置（例如修改端口）
+sed -i 's/SAMETIME_PORT=.*/SAMETIME_PORT=8443/' server/.env
+
+# 重新生成 JWT 密钥（注意：会使所有已签发的 Token 失效）
+sed -i '/^JWT_SECRET=/d' server/.env
+echo "JWT_SECRET=$(openssl rand -base64 48)" >> server/.env
+```
+
+> ⚠️ **安全提示：**
+> - `.env` 已在 `.gitignore` 中，**不会被提交到 Git 仓库**
+> - 请勿将 `.env` 文件通过聊天、邮件等方式明文传输
+> - 建议使用非默认端口（如 `9527`）减少扫描器自动探测
+> - JWT 密钥长度建议 ≥ 48 字节（`openssl rand -base64 48`）
 
 ### 环境变量说明
 
