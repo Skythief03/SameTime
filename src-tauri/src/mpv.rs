@@ -46,7 +46,27 @@ impl MpvController {
 
         #[cfg(windows)]
         {
-            Err("Windows IPC not yet implemented".to_string())
+            use std::fs::OpenOptions;
+
+            let mut pipe = OpenOptions::new()
+                .read(true)
+                .write(true)
+                .open(&self.ipc_path)
+                .map_err(|e| format!("IPC connect error: {}", e))?;
+
+            let cmd = format!("{}\n", command);
+            pipe.write_all(cmd.as_bytes())
+                .map_err(|e| format!("IPC write error: {}", e))?;
+            pipe.flush()
+                .map_err(|e| format!("IPC flush error: {}", e))?;
+
+            let mut reader = BufReader::new(pipe);
+            let mut response = String::new();
+            reader
+                .read_line(&mut response)
+                .map_err(|e| format!("IPC read error: {}", e))?;
+
+            Ok(response)
         }
     }
 

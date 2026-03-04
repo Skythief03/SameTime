@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, watch, onMounted, onUnmounted } from "vue";
 import { open } from "@tauri-apps/plugin-dialog";
+import { convertFileSrc } from "@tauri-apps/api/core";
 import { usePlayerStore } from "@/stores/player";
 import { useRoomStore } from "@/stores/room";
 
@@ -59,11 +60,13 @@ const uploadVideo = async () => {
     uploadProgress.value = 0;
 
     const serverUrl = localStorage.getItem("serverUrl") || "http://localhost:8080";
-    const response = await fetch(selected as string);
+    const assetUrl = convertFileSrc(selected as string);
+    const response = await fetch(assetUrl);
     const blob = await response.blob();
 
+    const fileName = (selected as string).split(/[\\/]/).pop() || "video.mp4";
     const formData = new FormData();
-    formData.append("file", blob, (selected as string).split("/").pop() || "video.mp4");
+    formData.append("file", blob, fileName);
 
     const xhr = new XMLHttpRequest();
     xhr.open("POST", `${serverUrl}/api/files/upload`);
