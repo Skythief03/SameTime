@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from "vue";
+import { ref, watch, onMounted, onUnmounted } from "vue";
 import { open } from "@tauri-apps/plugin-dialog";
 import { usePlayerStore } from "@/stores/player";
 import { useRoomStore } from "@/stores/room";
@@ -106,27 +106,64 @@ const loadMagnetLink = async () => {
   magnetLink.value = "";
 };
 
-// 广播视频 hash 给房间成员
+const remoteUserHash = ref<string | null>(null);
+const remoteUserName = ref<string>("");
+const showMatchToast = ref(false);
+let matchToastTimer: number | null = null;
+
+// 执行 hash 比对的核心逻辑
+const compareHash = () => {
+  if (!remoteUserHash.value || !playerStore.videoHash) return;
+
+  const mismatch = remoteUserHash.value !== playerStore.videoHash;
+  hashMismatch.value = mismatch;
+
+  if (!mismatch) {
+    // 显示绿色一致提示，4 秒后自动消失
+    showMatchToast.value = true;
+    if (matchToastTimer) clearTimeout(matchToastTimer);
+    matchToastTimer = window.setTimeout(() => {
+      showMatchToast.value = false;
+    }, 4000);
+  }
+};
+
+// 广播视频 hash 给房间成员（结构化消息）
 const broadcastVideoHash = () => {
-  if (playerStore.videoHash) {
+  if (playerStore.videoHash && playerStore.videoPath) {
+    const fileName = playerStore.videoPath.split(/[\\/]/).pop() || "unknown";
     roomStore.sendMessage({
-      type: "chat_message",
+      type: "video_hash",
       room_id: roomStore.currentRoom?.id || "",
-      content: `[系统] 已选择视频，文件校验码: ${playerStore.videoHash.substring(0, 8)}...`,
-      created_at: Date.now(),
+      video_hash: playerStore.videoHash,
+      file_name: fileName,
     });
+    // 本地选择视频后，立即与已存储的远端 hash 比对
+    compareHash();
   }
 };
 
 // 监听房间 hash 比对事件
 const handleVideoHashCheck = (event: CustomEvent) => {
-  const remoteHash = event.detail?.video_hash || event.detail?.videoHash;
-  if (remoteHash && playerStore.videoHash && remoteHash !== playerStore.videoHash) {
-    hashMismatch.value = true;
-  } else {
-    hashMismatch.value = false;
-  }
+  const detail = event.detail;
+  const senderId = detail?.sender_id;
+  const userId = localStorage.getItem("userId");
+
+  // 忽略自己发出的消息
+  if (senderId === userId) return;
+
+  remoteUserHash.value = detail?.video_hash || null;
+  remoteUserName.value = detail?.sender_name || "其他用户";
+
+  compareHash();
 };
+
+// 当本地 videoHash 变化（选择了新视频），重新比对
+watch(() => playerStore.videoHash, () => {
+  if (playerStore.videoHash && remoteUserHash.value) {
+    compareHash();
+  }
+});
 
 const dismissHashWarning = () => {
   hashMismatch.value = false;
@@ -159,6 +196,9 @@ onUnmounted(() => {
   if (controlsTimeout) {
     clearTimeout(controlsTimeout);
   }
+  if (matchToastTimer) {
+    clearTimeout(matchToastTimer);
+  }
 });
 </script>
 
@@ -169,15 +209,23 @@ onUnmounted(() => {
     @mousemove="handleMouseMove"
     @dblclick="handleDoubleClick"
   >
-    <!-- Hash 不一致警告 -->
+    <!-- Hash 比对结果 -->
     <div
       v-if="hashMismatch"
-      class="absolute top-4 left-1/2 -translate-x-1/2 z-20 px-4 py-2 bg-yellow-600/90 rounded-lg text-sm flex items-center gap-3"
+      class="absolute top-4 left-1/2 -translate-x-1/2 z-20 px-4 py-3 bg-yellow-600/90 rounded-lg text-sm flex items-center gap-3 max-w-lg"
     >
-      ⚠️ 你的视频文件与房主不一致，同步可能不准确
-      <button class="text-xs underline hover:text-white" @click="showSourcePicker = true">重新选择</button>
+      <span>⚠️ 你的视频文件与 {{ remoteUserName }} 不一致（校验码不匹配），同步可能不准确</span>
+      <button class="text-xs underline hover:text-white whitespace-nowrap" @click="showSourcePicker = true">重新选择</button>
       <button class="text-xs opacity-70 hover:opacity-100" @click="dismissHashWarning">✕</button>
     </div>
+    <transition name="fade">
+      <div
+        v-if="showMatchToast"
+        class="absolute top-4 left-1/2 -translate-x-1/2 z-20 px-4 py-2 bg-green-600/90 rounded-lg text-sm flex items-center gap-2"
+      >
+        ✅ 视频文件校验一致，可以同步观影
+      </div>
+    </transition>
 
     <!-- 上传进度条 -->
     <div v-if="isUploading" class="absolute top-4 left-1/2 -translate-x-1/2 z-20 px-4 py-2 bg-gray-800/90 rounded-lg text-sm">
@@ -303,3 +351,16 @@ onUnmounted(() => {
     </div>
   </div>
 </template>
+
+<style scoped>
+.fade-enter-active {
+  transition: opacity 0.3s ease;
+}
+.fade-leave-active {
+  transition: opacity 0.6s ease;
+}
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
+</style>

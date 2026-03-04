@@ -162,6 +162,10 @@ export const useRoomStore = defineStore("room", () => {
         window.dispatchEvent(new CustomEvent("danmaku", { detail: message }));
         break;
 
+      case "video_hash":
+        window.dispatchEvent(new CustomEvent("video-hash-check", { detail: message }));
+        break;
+
       default:
         console.log("Unknown message type:", message);
     }

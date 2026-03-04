@@ -64,6 +64,15 @@ pub enum WsMessage {
         is_ready: bool,
     },
 
+    // 视频 hash 比对
+    VideoHash {
+        room_id: String,
+        video_hash: String,
+        file_name: String,
+        sender_id: String,
+        sender_name: String,
+    },
+
     // 心跳
     Ping {},
     Pong {},

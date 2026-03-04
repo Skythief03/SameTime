@@ -109,7 +109,8 @@ async fn handle_socket(
                             | WsMessage::IceCandidate { .. } => {
                                 let _ = broadcast_tx.send(ws_msg);
                             }
-                            WsMessage::ReadyStateChanged { .. } => {
+                            WsMessage::ReadyStateChanged { .. }
+                            | WsMessage::VideoHash { .. } => {
                                 let _ = broadcast_tx.send(ws_msg);
                             }
                             _ => {}
