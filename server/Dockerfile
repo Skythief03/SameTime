@@ -28,15 +28,15 @@ COPY --from=builder /app/target/release/sametime-server /app/sametime-server
 # Create data directories
 RUN mkdir -p /app/data/uploads
 
-# Default environment
+# Default environment (will be overridden by .env / docker-compose)
 ENV SAMETIME_HOST=0.0.0.0
-ENV SAMETIME_PORT=8080
+ENV SAMETIME_PORT=9527
 ENV DATABASE_URL=sqlite:./data/sametime.db?mode=rwc
 ENV UPLOAD_DIR=./data/uploads
 ENV JWT_SECRET=change-me-in-production
 ENV MAX_FILE_SIZE=10737418240
 
-EXPOSE 8080
+EXPOSE 9527
 
 VOLUME ["/app/data"]
 
