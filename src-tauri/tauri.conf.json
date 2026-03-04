@@ -35,10 +35,6 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "externalBin": [
-      "binaries/mpv",
-      "binaries/aria2c"
-    ],
     "category": "Entertainment",
     "shortDescription": "与朋友一起同步观影",
     "longDescription": "SameTime 是一个同步观影平台，支持多人实时同步播放视频、语音通话、文字聊天和弹幕互动。",
