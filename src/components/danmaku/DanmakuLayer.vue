@@ -74,8 +74,10 @@ const render = (timestamp: number) => {
   const now = performance.now() / 1000;
   const currentVideoTime = playerStore.currentTime;
 
-  // 添加新弹幕
-  for (const danmaku of pendingDanmaku.value) {
+  // 添加新弹幕，并收集已激活的索引以便移除
+  const activatedIndices: number[] = [];
+  for (let i = 0; i < pendingDanmaku.value.length; i++) {
+    const danmaku = pendingDanmaku.value[i];
     if (
       !activeDanmaku.value.has(danmaku.id) &&
       Math.abs(danmaku.timestamp - currentVideoTime) < 0.5
@@ -91,7 +93,12 @@ const render = (timestamp: number) => {
         track,
         width: textWidth,
       });
+      activatedIndices.push(i);
     }
+  }
+  // 从后往前移除已激活的弹幕，避免索引偏移
+  for (let i = activatedIndices.length - 1; i >= 0; i--) {
+    pendingDanmaku.value.splice(activatedIndices[i], 1);
   }
 
   // 渲染活跃弹幕

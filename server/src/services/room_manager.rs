@@ -100,7 +100,8 @@ impl RoomManager {
     }
 
     pub fn leave_room(&self, room_id: &str, user_id: &str) {
-        if let Some(room) = self.rooms.get(room_id) {
+        // 使用 remove_if 原子地检查空房间并删除，避免 TOCTOU 竞态
+        let removed = self.rooms.remove_if(room_id, |_, room| {
             room.members.remove(user_id);
 
             // 广播用户离开
@@ -108,28 +109,27 @@ impl RoomManager {
                 user_id: user_id.to_string(),
             });
 
-            // 如果房间空了，删除房间
             if room.members.is_empty() {
                 tracing::info!("Room empty, removing: room_id={}", room_id);
-                drop(room); // 释放引用再删除
-                self.rooms.remove(room_id);
-                tracing::info!("Active rooms: {}", self.rooms.len());
-                return;
-            }
-
-            let remaining = room.members.len();
-
-            // 如果房主离开，转移房主
-            let current_host = room.host_id.read().map(|h| h.clone()).unwrap_or_default();
-            if current_host == user_id {
-                if let Some(first) = room.members.iter().next() {
-                    let new_host = first.user_id.clone();
-                    tracing::info!("Host transferred: room_id={}, old={}, new={}", room_id, user_id, new_host);
-                    if let Ok(mut h) = room.host_id.write() { *h = new_host; }
+                true // 原子删除
+            } else {
+                // 如果房主离开，转移房主
+                let current_host = room.host_id.read().map(|h| h.clone()).unwrap_or_default();
+                if current_host == user_id {
+                    if let Some(first) = room.members.iter().next() {
+                        let new_host = first.user_id.clone();
+                        tracing::info!("Host transferred: room_id={}, old={}, new={}", room_id, user_id, new_host);
+                        if let Ok(mut h) = room.host_id.write() { *h = new_host; }
+                    }
                 }
-            }
 
-            tracing::info!("User left room: room_id={}, user_id={}, remaining={}", room_id, user_id, remaining);
+                tracing::info!("User left room: room_id={}, user_id={}, remaining={}", room_id, user_id, room.members.len());
+                false // 保留房间
+            }
+        });
+
+        if removed.is_some() {
+            tracing::info!("Active rooms: {}", self.rooms.len());
         }
     }
 

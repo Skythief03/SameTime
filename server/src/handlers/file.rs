@@ -244,12 +244,14 @@ pub async fn download(
     let stream = tokio_util::io::ReaderStream::new(file_handle);
     let body = Body::from_stream(stream);
 
+    let safe_filename = filename.replace('\\', "_").replace('"', "_");
+
     let response = Response::builder()
         .header(header::CONTENT_TYPE, "application/octet-stream")
         .header(header::CONTENT_LENGTH, metadata.len())
         .header(
             header::CONTENT_DISPOSITION,
-            format!("attachment; filename=\"{}\"", filename),
+            format!("attachment; filename=\"{}\"", safe_filename),
         )
         .body(body)
         .map_err(|e| AppError::Internal(e.to_string()))?;

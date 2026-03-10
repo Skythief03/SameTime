@@ -234,7 +234,8 @@ export const useRoomStore = defineStore("room", () => {
 
     reconnectTimer = setTimeout(() => {
       connectToRoom(roomId).catch(() => {
-        // will retry via onclose
+        // 连接失败（从未 connected），onclose 不会触发重连，需手动继续
+        attemptReconnect(roomId);
       });
     }, delay);
   };

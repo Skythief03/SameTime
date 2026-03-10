@@ -8,6 +8,13 @@ const roomStore = useRoomStore();
 const messages = ref<ChatMessage[]>([]);
 const inputText = ref("");
 const messagesContainer = ref<HTMLDivElement | null>(null);
+const MAX_MESSAGES = 500;
+
+const trimMessages = () => {
+  if (messages.value.length > MAX_MESSAGES) {
+    messages.value = messages.value.slice(-MAX_MESSAGES);
+  }
+};
 
 const sendMessage = () => {
   if (!inputText.value.trim()) return;
@@ -32,6 +39,7 @@ const sendMessage = () => {
     content,
     createdAt: Date.now(),
   });
+  trimMessages();
   scrollToBottom();
   inputText.value = "";
 };
@@ -67,6 +75,7 @@ const handleChatMessage = (event: CustomEvent) => {
   };
 
   messages.value.push(message);
+  trimMessages();
   scrollToBottom();
 };
 
