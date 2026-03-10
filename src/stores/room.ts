@@ -78,6 +78,8 @@ export const useRoomStore = defineStore("room", () => {
   };
 
   const connectToRoom = async (roomId: string) => {
+    intentionalClose = false;
+
     if (ws.value) {
       ws.value.close();
     }
@@ -240,7 +242,6 @@ export const useRoomStore = defineStore("room", () => {
     members.value.clear();
     connectionStatus.value = "disconnected";
     reconnectAttempts = 0;
-    intentionalClose = false;
   };
 
   return {
