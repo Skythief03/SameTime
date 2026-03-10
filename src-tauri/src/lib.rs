@@ -65,6 +65,7 @@ pub fn run() {
             mpv::mpv_set_pause,
             mpv::mpv_set_volume,
             mpv::mpv_get_position,
+            mpv::mpv_update_geometry,
             mpv::mpv_check,
         ])
         .run(tauri::generate_context!())

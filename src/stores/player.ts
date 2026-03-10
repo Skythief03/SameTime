@@ -33,10 +33,17 @@ export const usePlayerStore = defineStore("player", () => {
   const formattedDuration = computed(() => formatTime(duration.value));
 
   // 加载视频
-  const loadVideo = async (path: string) => {
+  const loadVideo = async (path: string, containerRect?: { x: number; y: number; w: number; h: number }) => {
     try {
       videoPath.value = path;
-      await invoke("mpv_play", { filePath: path });
+      const playArgs: Record<string, unknown> = { filePath: path };
+      if (containerRect) {
+        playArgs.containerX = containerRect.x;
+        playArgs.containerY = containerRect.y;
+        playArgs.containerW = containerRect.w;
+        playArgs.containerH = containerRect.h;
+      }
+      await invoke("mpv_play", playArgs);
 
       // 计算文件 hash
       videoHash.value = await invoke<string>("calculate_file_hash", { filePath: path });
