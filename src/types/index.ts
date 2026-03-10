@@ -74,6 +74,7 @@ export type WsMessage =
   | UserJoinedMessage
   | UserLeftMessage
   | ReadyStateChangedMessage
+  | RoomStateMessage
   | VideoHashMessage
   | ErrorMessage;
 
@@ -146,6 +147,15 @@ export interface ReadyStateChangedMessage {
   type: "ready_state_changed";
   userId: string;
   isReady: boolean;
+}
+
+export interface RoomStateMessage {
+  type: "room_state";
+  members: Array<{
+    user_id: string;
+    username: string;
+    is_ready: boolean;
+  }>;
 }
 
 export interface VideoHashMessage {

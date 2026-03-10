@@ -16,7 +16,15 @@ const serverFileUrl = ref("");
 const uploadProgress = ref(0);
 const isUploading = ref(false);
 const hashMismatch = ref(false);
+const mpvMissing = ref(false);
 let controlsTimeout: number | null = null;
+
+const formatFileSize = (bytes: number): string => {
+  if (bytes < 1024) return bytes + " B";
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
+  if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + " MB";
+  return (bytes / (1024 * 1024 * 1024)).toFixed(2) + " GB";
+};
 
 // 本地视频文件选择
 const selectLocalVideo = async () => {
@@ -33,11 +41,17 @@ const selectLocalVideo = async () => {
 
     if (selected) {
       showSourcePicker.value = false;
+      mpvMissing.value = false;
       await playerStore.loadVideo(selected as string);
       broadcastVideoHash();
     }
-  } catch (error) {
-    console.error("Failed to select video:", error);
+  } catch (error: any) {
+    if (error?.message === "MPV_NOT_FOUND") {
+      showSourcePicker.value = false;
+      mpvMissing.value = true;
+    } else {
+      console.error("Failed to select video:", error);
+    }
   }
 };
 
@@ -246,7 +260,26 @@ onUnmounted(() => {
 
     <!-- 无视频时的占位 -->
     <div
-      v-if="!playerStore.videoPath && !showSourcePicker"
+      v-if="mpvMissing"
+      class="text-center max-w-md mx-auto p-6"
+    >
+      <div class="text-5xl mb-4">&#9888;&#65039;</div>
+      <h3 class="text-lg font-medium mb-2">未检测到 MPV 播放器</h3>
+      <p class="text-gray-400 text-sm mb-4">SameTime 需要 MPV 播放器来播放视频，请先安装：</p>
+      <div class="text-left text-sm space-y-2 bg-gray-800 p-4 rounded-lg">
+        <p><strong>macOS:</strong> <code class="bg-gray-700 px-1.5 py-0.5 rounded">brew install mpv</code></p>
+        <p><strong>Linux:</strong> <code class="bg-gray-700 px-1.5 py-0.5 rounded">sudo apt install mpv</code></p>
+        <p><strong>Windows:</strong> 从 mpv.io 下载安装并添加到系统 PATH</p>
+      </div>
+      <button
+        class="mt-4 px-4 py-2 bg-primary-600 hover:bg-primary-700 rounded-lg text-sm transition-colors"
+        @click="mpvMissing = false; showSourcePicker = true"
+      >
+        已安装，重试
+      </button>
+    </div>
+    <div
+      v-else-if="!playerStore.videoPath && !showSourcePicker"
       class="text-center"
     >
       <div class="text-6xl mb-4">🎬</div>
@@ -342,6 +375,25 @@ onUnmounted(() => {
       v-if="playerStore.videoPath && showControls"
       class="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent pointer-events-none"
     >
+      <!-- 左上角文件信息 -->
+      <div class="absolute top-3 left-3 pointer-events-auto text-xs text-gray-300 bg-black/50 rounded-lg px-3 py-2 max-w-xs">
+        <p class="font-medium truncate">{{ playerStore.videoFileName }}</p>
+        <p v-if="playerStore.videoFileSize" class="text-gray-400">
+          {{ formatFileSize(playerStore.videoFileSize) }}
+        </p>
+        <p v-if="playerStore.videoHash" class="text-gray-500 font-mono">
+          Hash: {{ playerStore.videoHash?.substring(0, 12) }}...
+        </p>
+      </div>
+
+      <!-- 右上角更换视频按钮 -->
+      <button
+        class="absolute top-3 right-3 pointer-events-auto px-3 py-1.5 text-xs bg-gray-700/80 hover:bg-gray-600 rounded-lg transition-colors"
+        @click="showSourcePicker = true"
+      >
+        更换视频
+      </button>
+
       <!-- 中央播放按钮 -->
       <button
         class="absolute inset-0 flex items-center justify-center pointer-events-auto"

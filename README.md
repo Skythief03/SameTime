@@ -155,7 +155,7 @@ SameTime/
 - **Node.js** 18+
 - **pnpm** (包管理器)
 - **Rust** 1.75+ (含 cargo)
-- **MPV** 播放器
+- **MPV** 播放器 (**必须** - 视频播放核心依赖，需在系统 PATH 中可调用)
 
 ```bash
 # macOS
@@ -164,8 +164,14 @@ brew install mpv
 # Ubuntu / Debian
 sudo apt install mpv
 
+# Arch Linux
+sudo pacman -S mpv
+
 # Windows
-# 下载安装 https://mpv.io/installation/
+# 从 https://mpv.io/installation/ 下载，解压后将 mpv.exe 所在目录添加到系统 PATH
+
+# 验证安装
+mpv --version
 ```
 
 ### 启动服务端
@@ -238,6 +244,7 @@ docker compose logs -f
 | `ice_candidate` | 双向 | ICE 候选 |
 | `video_hash` | 双向 | 视频文件 hash 广播与比对 |
 | `user_joined/left` | 服务端 → 客户端 | 用户进出房间 |
+| `room_state` | 服务端 → 客户端 | 新用户连接时发送当前房间成员列表 |
 | `ping/pong` | 心跳 | 30 秒间隔保活 |
 
 ---

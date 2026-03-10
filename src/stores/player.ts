@@ -10,6 +10,12 @@ export const usePlayerStore = defineStore("player", () => {
   const isFullscreen = ref(false);
   const videoPath = ref<string | null>(null);
   const videoHash = ref<string | null>(null);
+  const videoFileSize = ref<number | null>(null);
+
+  const videoFileName = computed(() => {
+    if (!videoPath.value) return null;
+    return videoPath.value.split(/[\\/]/).pop() || null;
+  });
 
   // 格式化时间显示
   const formatTime = (seconds: number): string => {
@@ -31,14 +37,23 @@ export const usePlayerStore = defineStore("player", () => {
     try {
       videoPath.value = path;
       await invoke("mpv_play", { filePath: path });
-      
+
       // 计算文件 hash
       videoHash.value = await invoke<string>("calculate_file_hash", { filePath: path });
 
+      // 获取文件大小
+      videoFileSize.value = await invoke<number>("get_file_size", { filePath: path });
+
       // 开始轮询播放位置
       startPolling();
-    } catch (error) {
-      console.error("Failed to load video:", error);
+    } catch (error: any) {
+      videoPath.value = null;
+      videoHash.value = null;
+      videoFileSize.value = null;
+      const errorStr = String(error);
+      if (errorStr.includes("Failed to start mpv") || errorStr.includes("not found")) {
+        throw new Error("MPV_NOT_FOUND");
+      }
       throw error;
     }
   };
@@ -172,6 +187,7 @@ export const usePlayerStore = defineStore("player", () => {
 
     videoPath.value = null;
     videoHash.value = null;
+    videoFileSize.value = null;
     currentTime.value = 0;
     duration.value = 0;
     isPlaying.value = false;
@@ -199,6 +215,8 @@ export const usePlayerStore = defineStore("player", () => {
     isFullscreen,
     videoPath,
     videoHash,
+    videoFileName,
+    videoFileSize,
     formattedCurrentTime,
     formattedDuration,
     loadVideo,

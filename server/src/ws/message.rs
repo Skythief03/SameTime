@@ -1,6 +1,13 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RoomStateMember {
+    pub user_id: String,
+    pub username: String,
+    pub is_ready: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum WsMessage {
     // 同步相关
@@ -62,6 +69,9 @@ pub enum WsMessage {
     ReadyStateChanged {
         user_id: String,
         is_ready: bool,
+    },
+    RoomState {
+        members: Vec<RoomStateMember>,
     },
 
     // 视频 hash 比对

@@ -148,6 +148,20 @@ export const useRoomStore = defineStore("room", () => {
         break;
       }
 
+      case "room_state": {
+        const msg = message as any;
+        members.value.clear();
+        for (const m of msg.members) {
+          members.value.set(m.user_id, {
+            userId: m.user_id,
+            username: m.username,
+            isReady: m.is_ready ?? false,
+            isMuted: false,
+          });
+        }
+        break;
+      }
+
       case "user_left": {
         const msg = message as any;
         members.value.delete(msg.user_id);

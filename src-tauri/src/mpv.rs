@@ -218,3 +218,23 @@ pub fn mpv_get_position(state: tauri::State<MpvController>) -> Result<f64, Strin
         .as_f64()
         .ok_or_else(|| "Failed to get position".to_string())
 }
+
+#[tauri::command]
+pub fn mpv_check() -> Result<String, String> {
+    let mut cmd = Command::new("mpv");
+    cmd.arg("--version")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null());
+
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+
+    let output = cmd.output().map_err(|_| "mpv not found".to_string())?;
+    let version = String::from_utf8_lossy(&output.stdout);
+    let first_line = version.lines().next().unwrap_or("unknown").to_string();
+    Ok(first_line)
+}

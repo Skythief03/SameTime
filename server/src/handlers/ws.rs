@@ -8,7 +8,7 @@ use axum::{
 use futures::{SinkExt, StreamExt};
 use serde::Deserialize;
 
-use crate::ws::message::WsMessage;
+use crate::ws::message::{RoomStateMember, WsMessage};
 use crate::AppState;
 
 #[derive(Deserialize)]
@@ -58,13 +58,28 @@ async fn handle_socket(
     // 将用户加入房间成员列表
     state.room_manager.join_room(&room_id, user_id.clone(), username.clone());
 
-    // 广播用户加入（WebSocket 连接成功才广播，确保只广播一次）
+    // 先订阅 broadcast，确保能收到自己的 UserJoined 消息
+    let mut rx = room.broadcast.subscribe();
+
+    // 发送当前成员列表给新用户
+    let existing_members: Vec<RoomStateMember> = room.members
+        .iter()
+        .map(|entry| RoomStateMember {
+            user_id: entry.value().user_id.clone(),
+            username: entry.value().username.clone(),
+            is_ready: entry.value().is_ready,
+        })
+        .collect();
+    let room_state_msg = serde_json::to_string(&WsMessage::RoomState {
+        members: existing_members,
+    }).unwrap_or_default();
+    let _ = sender.send(Message::Text(room_state_msg.into())).await;
+
+    // 广播用户加入（订阅之后，所有人包括自己都能收到）
     let _ = room.broadcast.send(WsMessage::UserJoined {
         user_id: user_id.clone(),
         username: username.clone(),
     });
-
-    let mut rx = room.broadcast.subscribe();
 
     // Task: 从 broadcast channel 接收消息并转发给客户端
     let send_user_id = user_id.clone();

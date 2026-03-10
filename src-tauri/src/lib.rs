@@ -44,6 +44,12 @@ fn calculate_file_hash(file_path: String) -> Result<String, String> {
     Ok(format!("{:x}", result))
 }
 
+#[tauri::command]
+fn get_file_size(file_path: String) -> Result<u64, String> {
+    let metadata = std::fs::metadata(&file_path).map_err(|e| e.to_string())?;
+    Ok(metadata.len())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -52,12 +58,14 @@ pub fn run() {
         .manage(mpv::MpvController::new())
         .invoke_handler(tauri::generate_handler![
             calculate_file_hash,
+            get_file_size,
             mpv::mpv_play,
             mpv::mpv_stop,
             mpv::mpv_seek,
             mpv::mpv_set_pause,
             mpv::mpv_set_volume,
             mpv::mpv_get_position,
+            mpv::mpv_check,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

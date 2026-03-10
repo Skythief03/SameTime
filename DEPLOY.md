@@ -171,10 +171,19 @@ curl http://localhost:8080/api/health
 
 SameTime 客户端需要安装以下外部程序：
 
-1. **MPV 播放器**（必须）
+1. **MPV 播放器**（⚠️ **必须安装**，否则无法播放视频）
    - macOS: `brew install mpv`
-   - Windows: 下载 https://mpv.io/installation/
-   - Linux: `sudo apt install mpv`（Ubuntu/Debian）
+   - Windows: 从 [mpv.io](https://mpv.io/installation/) 下载安装，**并确保 `mpv.exe` 所在目录已添加到系统 PATH**
+   - Ubuntu/Debian: `sudo apt install mpv`
+   - Arch Linux: `sudo pacman -S mpv`
+
+   安装后请验证：
+   ```bash
+   mpv --version
+   # 应输出类似 mpv 0.3x.x ...
+   ```
+
+   > 💡 SameTime 启动播放时会自动检测 MPV，若未安装会显示安装引导页面。
 
 2. **aria2**（可选，磁力链接下载）
    - macOS: `brew install aria2`
@@ -252,6 +261,21 @@ sqlite3 data/sametime.db "UPDATE rooms SET password_hash = NULL WHERE id = 'room
 - `uploads/` — 上传的视频文件
 
 Docker 部署时对应 volume `sametime-data`，可用 `docker cp` 导出。
+
+### Q: 点击播放视频提示 MPV 未找到？
+**A:** SameTime 依赖外部 MPV 播放器，需要手动安装：
+- macOS: `brew install mpv`
+- Windows: 从 [mpv.io](https://mpv.io/installation/) 下载，安装后将 `mpv.exe` 所在目录添加到系统 PATH
+- Linux: `sudo apt install mpv`（Ubuntu/Debian）或 `sudo pacman -S mpv`（Arch）
+
+安装后在终端执行 `mpv --version` 确认可用，然后在 SameTime 中点击"已安装，重试"。
+
+### Q: 成员列表不显示或只显示自己？
+**A:** 成员列表依赖 WebSocket 连接正常工作：
+- 确认已成功加入房间（页面左上角显示房间名称）
+- 检查 WebSocket 连接状态是否为"已连接"
+- 如果连接断开后重连，成员列表会自动恢复
+- 如果问题持续，尝试退出房间后重新加入
 
 ### Q: 生产环境安全建议？
 1. **必须修改** `JWT_SECRET` 环境变量
