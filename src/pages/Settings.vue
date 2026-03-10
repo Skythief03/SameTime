@@ -3,11 +3,12 @@ import { ref, onMounted } from "vue";
 import { useRouter } from "vue-router";
 import { useUserStore } from "@/stores/user";
 import { showToast } from "@/utils/toast";
+import { getApiBaseUrl, getDefaultApiBaseUrl, setApiBaseUrl } from "@/platform";
 
 const router = useRouter();
 const userStore = useUserStore();
 
-const serverUrl = ref("http://localhost:8080");
+const serverUrl = ref(getDefaultApiBaseUrl());
 const downloadPath = ref("");
 const username = ref("");
 const connectionStatus = ref<"idle" | "testing" | "success" | "error">("idle");
@@ -16,13 +17,13 @@ const isFirstTime = ref(false);
 onMounted(() => {
   isFirstTime.value = !localStorage.getItem("sametime_configured");
   // 从本地存储加载设置
-  serverUrl.value = localStorage.getItem("serverUrl") || "http://localhost:8080";
+  serverUrl.value = getApiBaseUrl();
   downloadPath.value = localStorage.getItem("downloadPath") || "";
   username.value = userStore.username || "";
 });
 
 const saveSettings = () => {
-  localStorage.setItem("serverUrl", serverUrl.value);
+  setApiBaseUrl(serverUrl.value);
   localStorage.setItem("downloadPath", downloadPath.value);
   
   if (username.value && username.value !== userStore.username) {
@@ -61,7 +62,7 @@ const handleSave = () => {
 };
 
 const resetSettings = () => {
-  serverUrl.value = "http://localhost:8080";
+  serverUrl.value = getDefaultApiBaseUrl();
   downloadPath.value = "";
   connectionStatus.value = "idle";
   showToast("已恢复默认设置", "info");

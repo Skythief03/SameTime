@@ -1,6 +1,10 @@
 import { defineStore } from "pinia";
 import { ref, computed } from "vue";
-import { invoke } from "@tauri-apps/api/core";
+import { track } from "@/utils/telemetry";
+import { createPlayerAdapter } from "@/player/adapters";
+import { mapErrorToPlayerError } from "@/player";
+
+const adapter = createPlayerAdapter();
 
 export const usePlayerStore = defineStore("player", () => {
   const currentTime = ref(0);
@@ -17,26 +21,36 @@ export const usePlayerStore = defineStore("player", () => {
     return videoPath.value.split(/[\\/]/).pop() || null;
   });
 
-  // 格式化时间显示
   const formatTime = (seconds: number): string => {
     const h = Math.floor(seconds / 3600);
     const m = Math.floor((seconds % 3600) / 60);
     const s = Math.floor(seconds % 60);
-
-    if (h > 0) {
-      return `${h}:${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
-    }
+    if (h > 0) return `${h}:${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
     return `${m}:${s.toString().padStart(2, "0")}`;
   };
 
   const formattedCurrentTime = computed(() => formatTime(currentTime.value));
   const formattedDuration = computed(() => formatTime(duration.value));
 
-  // 加载视频
+  const unsubscribeTime = adapter.onTimeUpdate((time, dur) => {
+    currentTime.value = time;
+    if (dur > 0) duration.value = dur;
+  });
+
+  const unsubscribeState = adapter.onStateChange((state) => {
+    isPlaying.value = state.isPlaying;
+    volume.value = state.volume;
+    currentTime.value = state.currentTime;
+    if (state.duration > 0) duration.value = state.duration;
+  });
+
+  const unsubscribeError = adapter.onError((error) => {
+    track("player_error", { code: error.code, message: error.message });
+  });
+
   const loadVideo = async (path: string) => {
-    // 先检测 mpv 是否可用
     try {
-      await invoke("mpv_check");
+      await adapter.checkAvailability();
     } catch {
       throw new Error("MPV_NOT_FOUND");
     }
@@ -45,18 +59,15 @@ export const usePlayerStore = defineStore("player", () => {
       videoPath.value = path;
       duration.value = 0;
       currentTime.value = 0;
-      await invoke("mpv_play", { filePath: path });
 
-      // 计算文件 hash
-      videoHash.value = await invoke<string>("calculate_file_hash", { filePath: path });
+      await adapter.load(path);
+      track("player_load", { source: path });
 
-      // 获取文件大小
-      videoFileSize.value = await invoke<number>("get_file_size", { filePath: path });
-
-      // 重启轮询
-      stopPolling();
-      startPolling();
-    } catch (error: any) {
+      videoHash.value = await adapter.calculateFileHash(path);
+      videoFileSize.value = await adapter.getFileSize(path);
+    } catch (error) {
+      const mapped = mapErrorToPlayerError(error);
+      track("player_error", { action: "load", code: mapped.code, message: mapped.message });
       videoPath.value = null;
       videoHash.value = null;
       videoFileSize.value = null;
@@ -64,58 +75,62 @@ export const usePlayerStore = defineStore("player", () => {
     }
   };
 
-  // 播放/暂停切换
   const togglePlay = async () => {
     try {
-      const newState = !isPlaying.value;
-      await invoke("mpv_set_pause", { paused: !newState });
-      isPlaying.value = newState;
+      const next = !isPlaying.value;
+      if (next) {
+        await adapter.play();
+      } else {
+        await adapter.pause();
+      }
+      track(next ? "player_play" : "player_pause", { action: "toggle" });
     } catch (error) {
+      track("player_error", { action: "toggle_play", error: String(error) });
       console.error("Failed to toggle play:", error);
     }
   };
 
-  // 播放
   const play = async () => {
     try {
-      await invoke("mpv_set_pause", { paused: false });
-      isPlaying.value = true;
+      await adapter.play();
+      track("player_play", { action: "play" });
     } catch (error) {
+      track("player_error", { action: "play", error: String(error) });
       console.error("Failed to play:", error);
     }
   };
 
-  // 暂停
   const pause = async () => {
     try {
-      await invoke("mpv_set_pause", { paused: true });
-      isPlaying.value = false;
+      await adapter.pause();
+      track("player_pause", { action: "pause" });
     } catch (error) {
+      track("player_error", { action: "pause", error: String(error) });
       console.error("Failed to pause:", error);
     }
   };
 
-  // 跳转
   const seek = async (position: number) => {
     try {
-      await invoke("mpv_seek", { position });
+      await adapter.seek(position);
       currentTime.value = position;
+      track("player_seek", { position });
     } catch (error) {
+      track("player_error", { action: "seek", error: String(error), position });
       console.error("Failed to seek:", error);
     }
   };
 
-  // 设置音量
   const setVolume = async (value: number) => {
     try {
-      await invoke("mpv_set_volume", { volume: value });
+      await adapter.setVolume(value);
       volume.value = value;
     } catch (error) {
+      track("player_error", { action: "volume", error: String(error), value });
       console.error("Failed to set volume:", error);
     }
   };
 
-  // 全屏切换
   const toggleFullscreen = () => {
     if (!document.fullscreenElement) {
       document.documentElement.requestFullscreen();
@@ -126,26 +141,22 @@ export const usePlayerStore = defineStore("player", () => {
     }
   };
 
-  // 更新播放时间（由 mpv 事件触发）
   const updateTime = (time: number) => {
     currentTime.value = time;
   };
 
-  // 更新时长
   const updateDuration = (dur: number) => {
     duration.value = dur;
   };
 
-  // 同步到指定状态（被远程同步调用）
   const syncTo = async (timestamp: number, playing: boolean) => {
     const drift = Math.abs(currentTime.value - timestamp);
-    
-    // 如果漂移超过 2 秒，执行跳转
+    track("sync_drift", { drift, timestamp, current: currentTime.value });
+
     if (drift > 2) {
       await seek(timestamp);
     }
 
-    // 同步播放状态
     if (playing !== isPlaying.value) {
       if (playing) {
         await play();
@@ -155,62 +166,21 @@ export const usePlayerStore = defineStore("player", () => {
     }
   };
 
-  // 轮询 mpv 状态（位置、时长、暂停状态）
-  let pollTimer: ReturnType<typeof setInterval> | null = null;
-
   const startPolling = () => {
-    if (pollTimer) return;
-    pollTimer = setInterval(async () => {
-      if (!videoPath.value) return;
-      try {
-        const pos = await invoke<number>("mpv_get_position");
-        if (typeof pos === "number" && !isNaN(pos)) {
-          currentTime.value = pos;
-        }
-      } catch {
-        // mpv may not be ready yet, ignore
-      }
-
-      // 查询总时长（只在未获取到时查询）
-      if (duration.value <= 0) {
-        try {
-          const dur = await invoke<number>("mpv_get_duration");
-          if (typeof dur === "number" && !isNaN(dur) && dur > 0) {
-            duration.value = dur;
-          }
-        } catch {
-          // duration not available yet
-        }
-      }
-
-      // 同步 mpv 实际暂停状态
-      try {
-        const paused = await invoke<boolean>("mpv_get_paused");
-        if (typeof paused === "boolean") {
-          isPlaying.value = !paused;
-        }
-      } catch {
-        // ignore
-      }
-    }, 500);
+    // polling moved into adapter
   };
 
   const stopPolling = () => {
-    if (pollTimer) {
-      clearInterval(pollTimer);
-      pollTimer = null;
-    }
+    // polling moved into adapter
   };
 
-  // 清理资源
   const cleanup = async () => {
-    stopPolling();
-    // 移除同步事件监听器
     window.removeEventListener("sync-broadcast", handleSyncBroadcast as EventListener);
     try {
-      await invoke("mpv_stop");
+      await adapter.dispose();
     } catch (error) {
-      console.error("Failed to stop mpv:", error);
+      track("player_error", { action: "cleanup", error: String(error) });
+      console.error("Failed to dispose player adapter:", error);
     }
 
     videoPath.value = null;
@@ -221,19 +191,22 @@ export const usePlayerStore = defineStore("player", () => {
     isPlaying.value = false;
   };
 
-  // 监听同步事件
   const handleSyncBroadcast = (event: CustomEvent) => {
     const { timestamp, is_playing, sender_id } = event.detail;
     const userId = localStorage.getItem("userId");
-    
-    // 不处理自己发送的同步消息
+
     if (sender_id !== userId) {
       syncTo(timestamp, is_playing);
     }
   };
 
-  // 注册事件监听
   window.addEventListener("sync-broadcast", handleSyncBroadcast as EventListener);
+
+  const disposeListeners = () => {
+    unsubscribeTime();
+    unsubscribeState();
+    unsubscribeError();
+  };
 
   return {
     currentTime,
@@ -260,5 +233,6 @@ export const usePlayerStore = defineStore("player", () => {
     startPolling,
     stopPolling,
     cleanup,
+    disposeListeners,
   };
 });

@@ -1,5 +1,6 @@
 import { defineStore } from "pinia";
 import { ref, computed } from "vue";
+import { getApiBaseUrl } from "@/platform";
 
 export const useUserStore = defineStore("user", () => {
   const userId = ref<string | null>(null);
@@ -27,9 +28,7 @@ export const useUserStore = defineStore("user", () => {
   };
 
   const login = async (name: string, password: string) => {
-    const serverUrl = localStorage.getItem("serverUrl") || "http://localhost:8080";
-    
-    const response = await fetch(`${serverUrl}/api/auth/login`, {
+    const response = await fetch(`${getApiBaseUrl()}/api/auth/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ username: name, password }),
@@ -50,9 +49,7 @@ export const useUserStore = defineStore("user", () => {
   };
 
   const register = async (name: string, password: string) => {
-    const serverUrl = localStorage.getItem("serverUrl") || "http://localhost:8080";
-    
-    const response = await fetch(`${serverUrl}/api/auth/register`, {
+    const response = await fetch(`${getApiBaseUrl()}/api/auth/register`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ username: name, password }),
