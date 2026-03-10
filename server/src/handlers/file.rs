@@ -45,6 +45,8 @@ pub async fn upload(
     State(state): State<AppState>,
     mut multipart: Multipart,
 ) -> AppResult<Json<serde_json::Value>> {
+    tracing::info!("File upload request received");
+
     let upload_dir = PathBuf::from(&state.config.upload_dir);
     fs::create_dir_all(&upload_dir)
         .await
@@ -69,6 +71,7 @@ pub async fn upload(
             .unwrap_or_default();
 
         if !ALLOWED_EXTENSIONS.contains(&ext.as_str()) {
+            tracing::warn!("Upload rejected: file type '{}' not allowed, filename={}", ext, filename);
             return Err(AppError::BadRequest(format!(
                 "File type '{}' not allowed",
                 ext
@@ -79,6 +82,8 @@ pub async fn upload(
         let save_filename = format!("{}_{}", &file_id[..8], filename);
         let save_path = upload_dir.join(&save_filename);
 
+        tracing::info!("Uploading file: filename={}, ext={}", filename, ext);
+
         let data = field
             .bytes()
             .await
@@ -87,6 +92,7 @@ pub async fn upload(
         let file_size = data.len() as u64;
         if file_size > state.config.max_file_size {
             let max_mb = state.config.max_file_size / (1024 * 1024);
+            tracing::warn!("Upload rejected: file too large, size={}MB, max={}MB, filename={}", file_size / (1024 * 1024), max_mb, filename);
             return Err(AppError::BadRequest(format!(
                 "File too large ({}MB). Maximum: {}MB",
                 file_size / (1024 * 1024), max_mb
@@ -95,6 +101,7 @@ pub async fn upload(
 
         // Magic bytes validation
         if !is_valid_media_magic(&data, &ext) {
+            tracing::warn!("Upload rejected: invalid magic bytes, filename={}, ext={}", filename, ext);
             return Err(AppError::BadRequest(
                 "File content does not match expected media format".to_string(),
             ));
@@ -119,6 +126,8 @@ pub async fn upload(
         .execute(&state.db)
         .await?;
 
+        tracing::info!("File uploaded: id={}, filename={}, size={}KB", file_id, filename, file_size / 1024);
+
         return Ok(Json(json!({
             "id": file_id,
             "filename": filename,
@@ -127,6 +136,7 @@ pub async fn upload(
         })));
     }
 
+    tracing::warn!("Upload failed: no file in request");
     Err(AppError::BadRequest("No file uploaded".to_string()))
 }
 
@@ -134,6 +144,8 @@ pub async fn download(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> AppResult<Response> {
+    tracing::info!("File download request: id={}", id);
+
     let file = sqlx::query_as::<_, (String, String)>(
         "SELECT id, filename FROM files WHERE id = ?",
     )
@@ -142,7 +154,10 @@ pub async fn download(
     .await?;
 
     let (file_id, filename) = file
-        .ok_or_else(|| AppError::NotFound("File not found".to_string()))?;
+        .ok_or_else(|| {
+            tracing::warn!("Download failed: file id={} not found in DB", id);
+            AppError::NotFound("File not found".to_string())
+        })?;
 
     let upload_dir = PathBuf::from(&state.config.upload_dir);
 
@@ -164,11 +179,16 @@ pub async fn download(
         }
     }
 
-    let path = file_path.ok_or_else(|| AppError::NotFound("File not found on disk".to_string()))?;
+    let path = file_path.ok_or_else(|| {
+        tracing::warn!("Download failed: file id={} not found on disk", file_id);
+        AppError::NotFound("File not found on disk".to_string())
+    })?;
 
     let data = fs::read(&path)
         .await
         .map_err(|e| AppError::Internal(format!("Failed to read file: {}", e)))?;
+
+    tracing::info!("File served: id={}, filename={}, size={}KB", file_id, filename, data.len() / 1024);
 
     let response = Response::builder()
         .header(header::CONTENT_TYPE, "application/octet-stream")

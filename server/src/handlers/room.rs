@@ -13,7 +13,10 @@ pub async fn create_room(
     State(state): State<AppState>,
     Json(req): Json<CreateRoomRequest>,
 ) -> AppResult<Json<RoomResponse>> {
+    tracing::info!("Create room request: name={}, has_password={}", req.name, req.password.is_some());
+
     if req.name.trim().is_empty() {
+        tracing::warn!("Create room failed: empty name");
         return Err(AppError::BadRequest("Room name cannot be empty".to_string()));
     }
 
@@ -49,6 +52,8 @@ pub async fn create_room(
         .room_manager
         .create_room(room_id.clone(), req.name.clone(), host_id.clone(), username);
 
+    tracing::info!("Room created: id={}, name={}", room_id, req.name);
+
     Ok(Json(RoomResponse {
         id: room_id,
         name: req.name,
@@ -63,10 +68,15 @@ pub async fn get_room(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> AppResult<Json<RoomResponse>> {
+    tracing::debug!("Get room: id={}", id);
+
     let room = state
         .room_manager
         .get_room(&id)
-        .ok_or_else(|| AppError::NotFound("Room not found".to_string()))?;
+        .ok_or_else(|| {
+            tracing::warn!("Get room failed: id={} not found", id);
+            AppError::NotFound("Room not found".to_string())
+        })?;
 
     let host_id = room.host_id.read().unwrap().clone();
     let current_time = *room.current_time.read().unwrap();
@@ -92,6 +102,8 @@ pub async fn join_room(
     Path(id): Path<String>,
     Json(body): Json<JoinRoomBody>,
 ) -> AppResult<Json<RoomResponse>> {
+    tracing::info!("Join room request: room_id={}", id);
+
     // 验证房间密码
     let row: Option<(Option<String>,)> = sqlx::query_as(
         "SELECT password_hash FROM rooms WHERE id = ?",
@@ -104,11 +116,13 @@ pub async fn join_room(
         // 房间有密码
         let provided = body.password.unwrap_or_default();
         if provided.is_empty() {
+            tracing::warn!("Join room failed: room_id={} requires password", id);
             return Err(AppError::Unauthorized("此房间需要密码".to_string()));
         }
         let valid = bcrypt::verify(&provided, &hash)
             .map_err(|e| AppError::Internal(e.to_string()))?;
         if !valid {
+            tracing::warn!("Join room failed: room_id={} wrong password", id);
             return Err(AppError::Unauthorized("密码错误".to_string()));
         }
     }
@@ -118,12 +132,18 @@ pub async fn join_room(
 
     let room = state
         .room_manager
-        .join_room(&id, user_id, username)
-        .ok_or_else(|| AppError::NotFound("Room not found".to_string()))?;
+        .join_room(&id, user_id.clone(), username.clone())
+        .ok_or_else(|| {
+            tracing::warn!("Join room failed: room_id={} not found in memory", id);
+            AppError::NotFound("Room not found".to_string())
+        })?;
 
     let host_id = room.host_id.read().unwrap().clone();
     let current_time = *room.current_time.read().unwrap();
     let is_playing = *room.is_playing.read().unwrap();
+    let member_count = room.members.len();
+
+    tracing::info!("User joined room: room_id={}, user_id={}, members={}", id, user_id, member_count);
 
     Ok(Json(RoomResponse {
         id: room.id.clone(),

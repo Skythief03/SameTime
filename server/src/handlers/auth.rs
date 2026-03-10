@@ -10,8 +10,11 @@ pub async fn register(
     State(state): State<AppState>,
     Json(req): Json<RegisterRequest>,
 ) -> AppResult<Json<AuthResponse>> {
+    tracing::info!("Register request: username={}", req.username);
+
     // 校验参数
     if req.username.trim().is_empty() || req.password.len() < 4 {
+        tracing::warn!("Register failed: invalid params for username={}", req.username);
         return Err(AppError::BadRequest(
             "Username cannot be empty and password must be at least 4 characters".to_string(),
         ));
@@ -26,6 +29,7 @@ pub async fn register(
     .await?;
 
     if exists > 0 {
+        tracing::warn!("Register failed: username={} already taken", req.username);
         return Err(AppError::Conflict("Username already taken".to_string()));
     }
 
@@ -48,6 +52,8 @@ pub async fn register(
     // 生成 JWT
     let token = generate_jwt(&user_id, &req.username, &state.config.jwt_secret, state.config.jwt_expiry_hours)?;
 
+    tracing::info!("User registered: id={}, username={}", user_id, req.username);
+
     Ok(Json(AuthResponse {
         user_id,
         username: req.username,
@@ -59,6 +65,8 @@ pub async fn login(
     State(state): State<AppState>,
     Json(req): Json<LoginRequest>,
 ) -> AppResult<Json<AuthResponse>> {
+    tracing::info!("Login request: username={}", req.username);
+
     let user = sqlx::query_as::<_, (String, String, String)>(
         "SELECT id, username, password_hash FROM users WHERE username = ?",
     )
@@ -67,18 +75,24 @@ pub async fn login(
     .await?;
 
     let (user_id, username, password_hash) = user
-        .ok_or_else(|| AppError::Unauthorized("Invalid username or password".to_string()))?;
+        .ok_or_else(|| {
+            tracing::warn!("Login failed: username={} not found", req.username);
+            AppError::Unauthorized("Invalid username or password".to_string())
+        })?;
 
     let valid = bcrypt::verify(&req.password, &password_hash)
         .map_err(|e| AppError::Internal(format!("Failed to verify password: {}", e)))?;
 
     if !valid {
+        tracing::warn!("Login failed: wrong password for username={}", req.username);
         return Err(AppError::Unauthorized(
             "Invalid username or password".to_string(),
         ));
     }
 
     let token = generate_jwt(&user_id, &username, &state.config.jwt_secret, state.config.jwt_expiry_hours)?;
+
+    tracing::info!("User logged in: id={}, username={}", user_id, username);
 
     Ok(Json(AuthResponse {
         user_id,

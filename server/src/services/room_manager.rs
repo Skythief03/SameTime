@@ -44,7 +44,7 @@ impl RoomManager {
 
         let room = Arc::new(Room {
             id: room_id.clone(),
-            name,
+            name: name.clone(),
             host_id: RwLock::new(host_id.clone()),
             video_hash: RwLock::new(None),
             current_time: RwLock::new(0.0),
@@ -57,13 +57,16 @@ impl RoomManager {
         room.members.insert(
             host_id.clone(),
             RoomMember {
-                user_id: host_id,
-                username: host_name,
+                user_id: host_id.clone(),
+                username: host_name.clone(),
                 is_ready: true,
             },
         );
 
-        self.rooms.insert(room_id, room.clone());
+        self.rooms.insert(room_id.clone(), room.clone());
+
+        tracing::info!("Room created in memory: id={}, name={}, host={}, total_rooms={}", room_id, name, host_name, self.rooms.len());
+
         room
     }
 
@@ -87,14 +90,17 @@ impl RoomManager {
             room.members.insert(
                 user_id.clone(),
                 RoomMember {
-                    user_id,
-                    username,
+                    user_id: user_id.clone(),
+                    username: username.clone(),
                     is_ready: false,
                 },
             );
 
+            tracing::info!("User joined room: room_id={}, user_id={}, username={}, members={}", room_id, user_id, username, room.members.len());
+
             Some(room.clone())
         } else {
+            tracing::warn!("Join room failed: room_id={} not found", room_id);
             None
         }
     }
@@ -110,19 +116,26 @@ impl RoomManager {
 
             // 如果房间空了，删除房间
             if room.members.is_empty() {
+                tracing::info!("Room empty, removing: room_id={}", room_id);
                 drop(room); // 释放引用再删除
                 self.rooms.remove(room_id);
+                tracing::info!("Active rooms: {}", self.rooms.len());
                 return;
             }
+
+            let remaining = room.members.len();
 
             // 如果房主离开，转移房主
             let current_host = room.host_id.read().unwrap().clone();
             if current_host == user_id {
                 if let Some(first) = room.members.iter().next() {
                     let new_host = first.user_id.clone();
+                    tracing::info!("Host transferred: room_id={}, old={}, new={}", room_id, user_id, new_host);
                     *room.host_id.write().unwrap() = new_host;
                 }
             }
+
+            tracing::info!("User left room: room_id={}, user_id={}, remaining={}", room_id, user_id, remaining);
         }
     }
 
@@ -155,11 +168,12 @@ impl RoomManager {
         }
 
         for id in &to_remove {
+            tracing::info!("Cleaning up stale room: id={}", id);
             self.rooms.remove(id);
         }
 
         if !to_remove.is_empty() {
-            tracing::info!("Cleaned up {} stale room(s)", to_remove.len());
+            tracing::info!("Cleaned up {} stale room(s), active rooms: {}", to_remove.len(), self.rooms.len());
         }
     }
 

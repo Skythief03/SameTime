@@ -27,6 +27,9 @@ async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt::init();
 
     let config = config::Config::load();
+    tracing::info!("Config loaded: host={}, port={}, upload_dir={}, max_file_size={}MB",
+        config.host, config.port, config.upload_dir, config.max_file_size / (1024 * 1024));
+
     let db = db::init(&config.database_url).await?;
     let room_manager = Arc::new(RoomManager::new());
 
