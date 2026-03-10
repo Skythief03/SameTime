@@ -10,9 +10,6 @@ pub struct MpvController {
     /// Mutex to serialize IPC commands (prevents Windows named pipe PIPE_BUSY errors)
     ipc_lock: Mutex<()>,
     ipc_path: String,
-    /// Cached parent window handle (HWND on Windows) for mpv embedding
-    #[cfg(windows)]
-    parent_hwnd: Mutex<Option<isize>>,
 }
 
 impl MpvController {
@@ -27,8 +24,6 @@ impl MpvController {
             process: Mutex::new(None),
             ipc_lock: Mutex::new(()),
             ipc_path,
-            #[cfg(windows)]
-            parent_hwnd: Mutex::new(None),
         }
     }
 
@@ -99,11 +94,6 @@ impl Default for MpvController {
 #[tauri::command]
 pub fn mpv_play(
     file_path: String,
-    window: tauri::Window,
-    container_x: Option<f64>,
-    container_y: Option<f64>,
-    container_w: Option<f64>,
-    container_h: Option<f64>,
     state: tauri::State<MpvController>,
 ) -> Result<(), String> {
     // 先停止现有进程
@@ -120,7 +110,7 @@ pub fn mpv_play(
         let _ = std::fs::remove_file(&state.ipc_path);
     }
 
-    // 启动 mpv
+    // 启动 mpv —— 独立无边框窗口，始终置顶
     let mut cmd = Command::new("mpv");
     cmd.args([
         &format!("--input-ipc-server={}", state.ipc_path),
@@ -128,45 +118,21 @@ pub fn mpv_play(
         "--keep-open=yes",
         "--idle=no",
         "--force-window=yes",
+        "--ontop",
+        "--no-border",
+        "--autofit=70%",
+        "--geometry=50%:50%",
     ])
     .stdin(Stdio::null())
     .stdout(Stdio::null())
     .stderr(Stdio::null());
 
-    // Windows: 嵌入到 Tauri 主窗口内部
+    // Windows: 防止弹出控制台窗口
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
         const CREATE_NO_WINDOW: u32 = 0x08000000;
         cmd.creation_flags(CREATE_NO_WINDOW);
-
-        if let Ok(hwnd) = window.hwnd() {
-            let hwnd_value = hwnd.0 as isize;
-            cmd.arg(format!("--wid={}", hwnd_value));
-
-            // 保存 HWND 用于后续 geometry 更新
-            if let Ok(mut h) = state.parent_hwnd.lock() {
-                *h = Some(hwnd_value);
-            }
-
-            // 使用容器坐标定位 mpv 在窗口内的渲染区域
-            if let (Some(x), Some(y), Some(w), Some(h)) =
-                (container_x, container_y, container_w, container_h)
-            {
-                cmd.arg(format!("--geometry={}x{}+{}+{}", w as i32, h as i32, x as i32, y as i32));
-            }
-        } else {
-            // fallback: 独立窗口
-            cmd.args(["--ontop", "--no-border", "--autofit=70%", "--geometry=50%:50%"]);
-        }
-    }
-
-    // macOS / Linux: 独立窗口模式
-    #[cfg(not(windows))]
-    {
-        let _ = &window; // suppress unused warning
-        let _ = (container_x, container_y, container_w, container_h);
-        cmd.args(["--ontop", "--no-border", "--autofit=70%", "--geometry=50%:50%"]);
     }
 
     cmd.arg(&file_path);
@@ -257,23 +223,30 @@ pub fn mpv_get_position(state: tauri::State<MpvController>) -> Result<f64, Strin
         .ok_or_else(|| "Failed to get position".to_string())
 }
 
-/// 更新 mpv 在父窗口内的渲染区域（Windows 嵌入模式下有效）
 #[tauri::command]
-pub fn mpv_update_geometry(
-    x: f64,
-    y: f64,
-    w: f64,
-    h: f64,
-    state: tauri::State<MpvController>,
-) -> Result<(), String> {
-    // 通过 IPC 设置 mpv 的 geometry 属性
-    let geometry = format!("{}x{}+{}+{}", w as i32, h as i32, x as i32, y as i32);
-    let cmd = format!(
-        r#"{{ "command": ["set_property", "geometry", "{}"] }}"#,
-        geometry
-    );
-    let _ = state.send_command(&cmd);
-    Ok(())
+pub fn mpv_get_duration(state: tauri::State<MpvController>) -> Result<f64, String> {
+    let cmd = r#"{ "command": ["get_property", "duration"] }"#;
+    let response = state.send_command(cmd)?;
+
+    let parsed: serde_json::Value =
+        serde_json::from_str(&response).map_err(|e| format!("Parse error: {}", e))?;
+
+    parsed["data"]
+        .as_f64()
+        .ok_or_else(|| "Failed to get duration".to_string())
+}
+
+#[tauri::command]
+pub fn mpv_get_paused(state: tauri::State<MpvController>) -> Result<bool, String> {
+    let cmd = r#"{ "command": ["get_property", "pause"] }"#;
+    let response = state.send_command(cmd)?;
+
+    let parsed: serde_json::Value =
+        serde_json::from_str(&response).map_err(|e| format!("Parse error: {}", e))?;
+
+    parsed["data"]
+        .as_bool()
+        .ok_or_else(|| "Failed to get pause state".to_string())
 }
 
 #[tauri::command]

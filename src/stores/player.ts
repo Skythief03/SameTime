@@ -33,7 +33,7 @@ export const usePlayerStore = defineStore("player", () => {
   const formattedDuration = computed(() => formatTime(duration.value));
 
   // 加载视频
-  const loadVideo = async (path: string, containerRect?: { x: number; y: number; w: number; h: number }) => {
+  const loadVideo = async (path: string) => {
     // 先检测 mpv 是否可用
     try {
       await invoke("mpv_check");
@@ -43,14 +43,9 @@ export const usePlayerStore = defineStore("player", () => {
 
     try {
       videoPath.value = path;
-      const playArgs: Record<string, unknown> = { filePath: path };
-      if (containerRect) {
-        playArgs.containerX = containerRect.x;
-        playArgs.containerY = containerRect.y;
-        playArgs.containerW = containerRect.w;
-        playArgs.containerH = containerRect.h;
-      }
-      await invoke("mpv_play", playArgs);
+      duration.value = 0;
+      currentTime.value = 0;
+      await invoke("mpv_play", { filePath: path });
 
       // 计算文件 hash
       videoHash.value = await invoke<string>("calculate_file_hash", { filePath: path });
@@ -58,7 +53,8 @@ export const usePlayerStore = defineStore("player", () => {
       // 获取文件大小
       videoFileSize.value = await invoke<number>("get_file_size", { filePath: path });
 
-      // 开始轮询播放位置
+      // 重启轮询
+      stopPolling();
       startPolling();
     } catch (error: any) {
       videoPath.value = null;
@@ -159,7 +155,7 @@ export const usePlayerStore = defineStore("player", () => {
     }
   };
 
-  // 轮询 mpv 播放位置
+  // 轮询 mpv 状态（位置、时长、暂停状态）
   let pollTimer: ReturnType<typeof setInterval> | null = null;
 
   const startPolling = () => {
@@ -173,6 +169,28 @@ export const usePlayerStore = defineStore("player", () => {
         }
       } catch {
         // mpv may not be ready yet, ignore
+      }
+
+      // 查询总时长（只在未获取到时查询）
+      if (duration.value <= 0) {
+        try {
+          const dur = await invoke<number>("mpv_get_duration");
+          if (typeof dur === "number" && !isNaN(dur) && dur > 0) {
+            duration.value = dur;
+          }
+        } catch {
+          // duration not available yet
+        }
+      }
+
+      // 同步 mpv 实际暂停状态
+      try {
+        const paused = await invoke<boolean>("mpv_get_paused");
+        if (typeof paused === "boolean") {
+          isPlaying.value = !paused;
+        }
+      } catch {
+        // ignore
       }
     }, 500);
   };

@@ -2,8 +2,6 @@
 import { ref, watch, onMounted, onUnmounted } from "vue";
 import { open } from "@tauri-apps/plugin-dialog";
 import { convertFileSrc } from "@tauri-apps/api/core";
-import { invoke } from "@tauri-apps/api/core";
-import { getCurrentWindow } from "@tauri-apps/api/window";
 import { usePlayerStore } from "@/stores/player";
 import { useRoomStore } from "@/stores/room";
 
@@ -11,7 +9,6 @@ const playerStore = usePlayerStore();
 const roomStore = useRoomStore();
 
 const containerRef = ref<HTMLDivElement | null>(null);
-const mpvContainerRef = ref<HTMLDivElement | null>(null);
 const showControls = ref(true);
 const showSourcePicker = ref(false);
 const magnetLink = ref("");
@@ -21,43 +18,12 @@ const isUploading = ref(false);
 const hashMismatch = ref(false);
 const mpvMissing = ref(false);
 let controlsTimeout: number | null = null;
-let resizeObserver: ResizeObserver | null = null;
 
 const formatFileSize = (bytes: number): string => {
   if (bytes < 1024) return bytes + " B";
   if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
   if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + " MB";
   return (bytes / (1024 * 1024 * 1024)).toFixed(2) + " GB";
-};
-
-// 获取 mpv 容器在窗口内的位置（用于 Windows 嵌入模式）
-const getContainerRect = () => {
-  const el = mpvContainerRef.value;
-  if (!el) return undefined;
-  const rect = el.getBoundingClientRect();
-  return {
-    x: Math.round(rect.x),
-    y: Math.round(rect.y),
-    w: Math.round(rect.width),
-    h: Math.round(rect.height),
-  };
-};
-
-// 当窗口大小变化时更新 mpv 的渲染区域
-const updateMpvGeometry = async () => {
-  if (!playerStore.videoPath) return;
-  const rect = getContainerRect();
-  if (!rect || rect.w <= 0 || rect.h <= 0) return;
-  try {
-    await invoke("mpv_update_geometry", {
-      x: rect.x,
-      y: rect.y,
-      w: rect.w,
-      h: rect.h,
-    });
-  } catch {
-    // mpv may not be running, ignore
-  }
 };
 
 // 本地视频文件选择
@@ -76,7 +42,7 @@ const selectLocalVideo = async () => {
     if (selected) {
       showSourcePicker.value = false;
       mpvMissing.value = false;
-      await playerStore.loadVideo(selected as string, getContainerRect());
+      await playerStore.loadVideo(selected as string);
       broadcastVideoHash();
     }
   } catch (error: any) {
@@ -132,7 +98,7 @@ const uploadVideo = async () => {
         serverFileUrl.value = `${serverUrl}${result.url}`;
         showSourcePicker.value = false;
         // 上传成功后，用本地文件加载到播放器
-        await playerStore.loadVideo(selected as string, getContainerRect());
+        await playerStore.loadVideo(selected as string);
         broadcastVideoHash();
       }
     };
@@ -243,20 +209,6 @@ const handleDoubleClick = () => {
 
 onMounted(() => {
   window.addEventListener("video-hash-check", handleVideoHashCheck as EventListener);
-
-  // 监听容器大小变化，更新 mpv 渲染区域（Windows 嵌入模式）
-  if (mpvContainerRef.value) {
-    resizeObserver = new ResizeObserver(() => {
-      updateMpvGeometry();
-    });
-    resizeObserver.observe(mpvContainerRef.value);
-  }
-
-  // 监听 Tauri 窗口 resize 事件
-  const appWindow = getCurrentWindow();
-  appWindow.onResized(() => {
-    updateMpvGeometry();
-  });
 });
 
 onUnmounted(() => {
@@ -266,10 +218,6 @@ onUnmounted(() => {
   }
   if (matchToastTimer) {
     clearTimeout(matchToastTimer);
-  }
-  if (resizeObserver) {
-    resizeObserver.disconnect();
-    resizeObserver = null;
   }
 });
 </script>
@@ -413,10 +361,9 @@ onUnmounted(() => {
       </button>
     </div>
 
-    <!-- 视频播放区域（MPV 将嵌入到这里） -->
+    <!-- 视频播放区域（MPV 外部窗口覆盖此区域） -->
     <div
       v-else
-      ref="mpvContainerRef"
       id="mpv-container"
       class="w-full h-full"
     >
