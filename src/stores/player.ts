@@ -34,6 +34,13 @@ export const usePlayerStore = defineStore("player", () => {
 
   // 加载视频
   const loadVideo = async (path: string, containerRect?: { x: number; y: number; w: number; h: number }) => {
+    // 先检测 mpv 是否可用
+    try {
+      await invoke("mpv_check");
+    } catch {
+      throw new Error("MPV_NOT_FOUND");
+    }
+
     try {
       videoPath.value = path;
       const playArgs: Record<string, unknown> = { filePath: path };
@@ -57,10 +64,6 @@ export const usePlayerStore = defineStore("player", () => {
       videoPath.value = null;
       videoHash.value = null;
       videoFileSize.value = null;
-      const errorStr = String(error);
-      if (errorStr.includes("Failed to start mpv") || errorStr.includes("not found")) {
-        throw new Error("MPV_NOT_FOUND");
-      }
       throw error;
     }
   };
