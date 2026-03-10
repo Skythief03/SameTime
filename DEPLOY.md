@@ -39,6 +39,25 @@ docker compose down
 
 数据持久化在 Docker volume `sametime-data` 中，包含 SQLite 数据库和上传文件。
 
+#### 代码更新后重新部署
+
+```bash
+cd server
+
+# 拉取最新代码
+git pull
+
+# 重新构建镜像并启动（--build 强制重新编译）
+docker compose up -d --build
+
+# 确认新版本运行正常
+docker compose ps
+docker compose logs -f sametime-server
+```
+
+> 💡 `--build` 会利用 Docker 缓存，只有变更的代码层会重新编译，依赖层会复用缓存。
+> 数据卷 `sametime-data` 不受影响，数据库和上传文件会保留。
+
 ### 方式二：手动编译部署
 
 **前置要求：** Rust 1.75+、SQLite3
