@@ -2,6 +2,7 @@ import { defineStore } from "pinia";
 import { ref, computed } from "vue";
 import type { Room, RoomMember, WsMessage } from "@/types";
 import { showToast } from "@/utils/toast";
+import { track } from "@/utils/telemetry";
 import { getApiBaseUrl, getWsBaseUrl } from "@/platform";
 
 export const useRoomStore = defineStore("room", () => {
@@ -91,8 +92,10 @@ export const useRoomStore = defineStore("room", () => {
 
       socket.onopen = () => {
         connected = true;
+        track("ws_reconnect_success", { roomId, via: "room_store" });
         connectionStatus.value = "connected";
         reconnectAttempts = 0;
+        track("ws_reconnect_success", { roomId, via: "composable" });
         ws.value = socket;
         startHeartbeat();
         resolve();
@@ -104,7 +107,8 @@ export const useRoomStore = defineStore("room", () => {
         stopHeartbeat();
         // 仅在已成功连接过的情况下才自动重连
         if (connected) {
-          attemptReconnect(roomId);
+          track("ws_reconnect_fail", { roomId, attempt: reconnectAttempts, via: "room_store" });
+        attemptReconnect(roomId);
         }
       };
 
@@ -120,6 +124,7 @@ export const useRoomStore = defineStore("room", () => {
           const message: WsMessage = JSON.parse(event.data);
           handleMessage(message);
         } catch (error) {
+          track("player_error", { action: "ws_parse", error: String(error) });
           console.error("Failed to parse WebSocket message:", error);
         }
       };
@@ -186,6 +191,7 @@ export const useRoomStore = defineStore("room", () => {
         break;
 
       default:
+        track("player_error", { action: "ws_unknown_message", type: (message as any)?.type });
         console.log("Unknown message type:", message);
     }
   };
@@ -235,11 +241,13 @@ export const useRoomStore = defineStore("room", () => {
 
     const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), 30000);
     reconnectAttempts++;
+    track("ws_reconnect_attempt", { roomId, attempt: reconnectAttempts, via: "room_store" });
     showToast(`连接断开，${Math.round(delay / 1000)}秒后重连 (${reconnectAttempts}/${MAX_RECONNECT})`, "warning");
 
     reconnectTimer = setTimeout(() => {
       connectToRoom(roomId).catch(() => {
         // 连接失败（从未 connected），onclose 不会触发重连，需手动继续
+        track("ws_reconnect_fail", { roomId, attempt: reconnectAttempts, via: "room_store" });
         attemptReconnect(roomId);
       });
     }, delay);

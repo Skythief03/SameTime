@@ -23,6 +23,9 @@ export interface PlayerError {
 export type Unsubscribe = () => void;
 
 export interface PlayerAdapter {
+  checkAvailability(): Promise<void>;
+  calculateFileHash(source: string): Promise<string>;
+  getFileSize(source: string): Promise<number>;
   load(source: string): Promise<void>;
   play(): Promise<void>;
   pause(): Promise<void>;

@@ -1,5 +1,6 @@
 import { ref, onUnmounted } from "vue";
 import type { WsMessage } from "@/types";
+import { track } from "@/utils/telemetry";
 import { getWsBaseUrl } from "@/platform";
 
 export type WsMessageHandler = (message: WsMessage) => void;
@@ -27,6 +28,7 @@ export function useWebSocket() {
       socket.onopen = () => {
         status.value = "connected";
         reconnectAttempts = 0;
+        track("ws_reconnect_success", { roomId, via: "composable" });
         ws.value = socket;
         resolve();
       };
@@ -49,6 +51,7 @@ export function useWebSocket() {
           const message: WsMessage = JSON.parse(event.data);
           dispatch(message);
         } catch (e) {
+          track("player_error", { action: "ws_parse", error: String(e) });
           console.error("Failed to parse WS message:", e);
         }
       };
@@ -60,9 +63,11 @@ export function useWebSocket() {
 
     const delay = BASE_RECONNECT_DELAY * Math.pow(2, Math.min(reconnectAttempts, 5));
     reconnectAttempts++;
+    track("ws_reconnect_attempt", { roomId, attempt: reconnectAttempts, via: "composable" });
 
     reconnectTimer = window.setTimeout(() => {
       connect(roomId).catch(() => {
+        track("ws_reconnect_fail", { roomId, attempt: reconnectAttempts, via: "composable" });
         // Will retry via onclose
       });
     }, delay);

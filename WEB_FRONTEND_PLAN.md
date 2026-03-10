@@ -165,11 +165,11 @@
 
 - [x] 新增 `src/platform/`：平台探测、环境变量读取、运行时能力标记。
 - [x] 抽象播放器能力接口与错误码。
-- [ ] 增加统一日志/埋点封装（播放器事件、ws 重连、同步偏差）。
+- [x] 增加统一日志/埋点封装（播放器事件、ws 重连、同步偏差）。
 
 ### B. 播放器改造
 
-- [ ] `player store` 从直接 `invoke` 改为调用 adapter。
+- [x] `player store` 从直接 `invoke` 改为调用 adapter。
 - [ ] `VideoPlayer.vue` 去除硬编码 Tauri API，按平台渲染：
   - 桌面：保留现有流程。
   - Web：显示 `<video>` 与文件选择控件。
@@ -224,7 +224,7 @@
   4) 写最小类型测试/编译检查（保证 Adapter 实现必须满足接口）。
 - DoD：`player store` 能只依赖接口类型，不依赖具体实现细节。
 
-**A3. 增加统一日志/埋点封装（播放器事件、ws 重连、同步偏差）**
+**A3. 增加统一日志/埋点封装（播放器事件、ws 重连、同步偏差）（✅ 已完成）**
 - 输入：现有 `console.log`、WebSocket 重连逻辑。
 - 子任务：
   1) 新建 `src/utils/telemetry.ts`（`track(event, payload)`）。
@@ -235,7 +235,7 @@
 
 #### B. 播放器改造
 
-**B1. `player store` 从直接 `invoke` 改为调用 adapter**
+**B1. `player store` 从直接 `invoke` 改为调用 adapter（✅ 已完成）**
 - 输入：当前 `src/stores/player.ts`。
 - 子任务：
   1) 抽离原有 MPV 调用到 `TauriMpvAdapter`。
