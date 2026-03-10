@@ -7,6 +7,8 @@ use std::os::unix::net::UnixStream;
 
 pub struct MpvController {
     process: Mutex<Option<Child>>,
+    /// Mutex to serialize IPC commands (prevents Windows named pipe PIPE_BUSY errors)
+    ipc_lock: Mutex<()>,
     ipc_path: String,
 }
 
@@ -20,11 +22,15 @@ impl MpvController {
 
         Self {
             process: Mutex::new(None),
+            ipc_lock: Mutex::new(()),
             ipc_path,
         }
     }
 
     fn send_command(&self, command: &str) -> Result<String, String> {
+        // Serialize all IPC access to prevent concurrent pipe open on Windows
+        let _lock = self.ipc_lock.lock().map_err(|e| format!("IPC lock error: {}", e))?;
+
         #[cfg(unix)]
         {
             let mut stream = UnixStream::connect(&self.ipc_path)
@@ -48,11 +54,19 @@ impl MpvController {
         {
             use std::fs::OpenOptions;
 
-            let mut pipe = OpenOptions::new()
-                .read(true)
-                .write(true)
-                .open(&self.ipc_path)
-                .map_err(|e| format!("IPC connect error: {}", e))?;
+            // Retry opening the pipe in case of transient PIPE_BUSY
+            let mut pipe = None;
+            for attempt in 0..5 {
+                match OpenOptions::new().read(true).write(true).open(&self.ipc_path) {
+                    Ok(p) => { pipe = Some(p); break; }
+                    Err(_) if attempt < 4 => {
+                        std::thread::sleep(std::time::Duration::from_millis(50));
+                        continue;
+                    }
+                    Err(e) => return Err(format!("IPC connect error: {}", e)),
+                }
+            }
+            let mut pipe = pipe.unwrap();
 
             let cmd = format!("{}\n", command);
             pipe.write_all(cmd.as_bytes())
@@ -68,15 +82,6 @@ impl MpvController {
 
             Ok(response)
         }
-    }
-
-    fn send_mpv_command(&self, args: &[&str]) -> Result<String, String> {
-        let json_args: Vec<String> = args.iter().map(|a| format!("\"{}\"", a)).collect();
-        let cmd = format!(
-            r#"{{ "command": [{}] }}"#,
-            json_args.join(", ")
-        );
-        self.send_command(&cmd)
     }
 }
 
@@ -103,23 +108,32 @@ pub fn mpv_play(file_path: String, state: tauri::State<MpvController>) -> Result
     }
 
     // 启动 mpv
-    let child = Command::new("mpv")
-        .args([
-            &format!("--input-ipc-server={}", state.ipc_path),
-            "--pause",
-            "--keep-open=yes",
-            "--idle=no",
-            "--force-window=yes",
-            "--ontop",
-            "--no-border",
-            "--autofit=70%",
-            "--geometry=50%:50%",
-            &file_path,
-        ])
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
+    let mut cmd = Command::new("mpv");
+    cmd.args([
+        &format!("--input-ipc-server={}", state.ipc_path),
+        "--pause",
+        "--keep-open=yes",
+        "--idle=no",
+        "--force-window=yes",
+        "--ontop",
+        "--no-border",
+        "--autofit=70%",
+        "--geometry=50%:50%",
+        &file_path,
+    ])
+    .stdin(Stdio::null())
+    .stdout(Stdio::null())
+    .stderr(Stdio::null());
+
+    // Windows: 防止弹出控制台窗口
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+
+    let child = cmd.spawn()
         .map_err(|e| format!("Failed to start mpv: {}", e))?;
 
     if let Ok(mut process) = state.process.lock() {

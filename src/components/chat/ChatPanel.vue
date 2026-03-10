@@ -89,7 +89,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="flex flex-col h-full">
+  <div class="flex flex-col h-full min-h-0">
     <!-- 标题 -->
     <div class="p-3 border-b border-gray-700">
       <h3 class="font-medium text-sm text-gray-300">聊天</h3>

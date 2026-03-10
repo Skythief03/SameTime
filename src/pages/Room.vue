@@ -229,13 +229,13 @@ const toggleSidebar = () => {
       <!-- 侧边栏 -->
       <aside
         v-show="showSidebar"
-        class="w-80 flex flex-col bg-gray-800 border-l border-gray-700"
+        class="w-80 flex flex-col min-h-0 bg-gray-800 border-l border-gray-700"
       >
         <!-- 成员列表 -->
         <MemberList class="border-b border-gray-700" />
         
         <!-- 聊天面板 -->
-        <ChatPanel class="flex-1" />
+        <ChatPanel class="flex-1 min-h-0" />
       </aside>
     </main>
 
