@@ -21,16 +21,29 @@ onMounted(() => {
   username.value = userStore.username || "";
 });
 
+const normalizeUrl = (url: string): string => {
+  let normalized = url.trim();
+  if (!normalized) return normalized;
+  // 自动补全协议
+  if (!/^https?:\/\//i.test(normalized)) {
+    normalized = `http://${normalized}`;
+  }
+  // 去掉末尾斜杠
+  return normalized.replace(/\/+$/, "");
+};
+
 const saveSettings = () => {
+  serverUrl.value = normalizeUrl(serverUrl.value);
   localStorage.setItem("serverUrl", serverUrl.value);
   localStorage.setItem("downloadPath", downloadPath.value);
-  
+
   if (username.value && username.value !== userStore.username) {
     userStore.setUsername(username.value);
   }
 };
 
 const testConnection = async () => {
+  serverUrl.value = normalizeUrl(serverUrl.value);
   connectionStatus.value = "testing";
   
   try {
