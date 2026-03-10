@@ -164,7 +164,7 @@
 ### A. 基础设施
 
 - [x] 新增 `src/platform/`：平台探测、环境变量读取、运行时能力标记。
-- [ ] 抽象播放器能力接口与错误码。
+- [x] 抽象播放器能力接口与错误码。
 - [ ] 增加统一日志/埋点封装（播放器事件、ws 重连、同步偏差）。
 
 ### B. 播放器改造
@@ -215,7 +215,7 @@
   4) 在 `main.ts` 或 `App.vue` 初始化时打印一次 capability 摘要日志（仅开发环境）。
 - DoD：业务代码不再直接散落读取 `import.meta.env`；平台判断只从 `platform/*` 获取。
 
-**A2. 抽象播放器能力接口与错误码**
+**A2. 抽象播放器能力接口与错误码（✅ 已完成）**
 - 输入：`player store` 当前接口和状态字段。
 - 子任务：
   1) 新建 `src/player/types.ts`：定义 `PlayerAdapter`、`PlayerState`、`PlayerErrorCode`。
