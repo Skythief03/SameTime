@@ -55,7 +55,10 @@ async fn handle_socket(
 
     tracing::info!("User connected: room_id={}, user_id={}, username={}", room_id, user_id, username);
 
-    // 广播用户加入
+    // 将用户加入房间成员列表
+    state.room_manager.join_room(&room_id, user_id.clone(), username.clone());
+
+    // 广播用户加入（WebSocket 连接成功才广播，确保只广播一次）
     let _ = room.broadcast.send(WsMessage::UserJoined {
         user_id: user_id.clone(),
         username: username.clone(),
@@ -66,12 +69,34 @@ async fn handle_socket(
     // Task: 从 broadcast channel 接收消息并转发给客户端
     let send_user_id = user_id.clone();
     let send_room_id = room_id.clone();
+    // 创建一个 channel 用于直接回复 Pong 给发送者
+    let (pong_tx, mut pong_rx) = tokio::sync::mpsc::channel::<WsMessage>(8);
     let send_task = tokio::spawn(async move {
-        while let Ok(msg) = rx.recv().await {
-            if let Ok(text) = serde_json::to_string(&msg) {
-                if sender.send(Message::Text(text.into())).await.is_err() {
-                    tracing::debug!("WebSocket send failed, closing: room_id={}, user_id={}", send_room_id, send_user_id);
-                    break;
+        loop {
+            tokio::select! {
+                result = rx.recv() => {
+                    match result {
+                        Ok(msg) => {
+                            if let Ok(text) = serde_json::to_string(&msg) {
+                                if sender.send(Message::Text(text.into())).await.is_err() {
+                                    tracing::debug!("WebSocket send failed, closing: room_id={}, user_id={}", send_room_id, send_user_id);
+                                    break;
+                                }
+                            }
+                        }
+                        Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
+                            tracing::warn!("Broadcast lagged by {} messages: room_id={}, user_id={}", n, send_room_id, send_user_id);
+                            continue;
+                        }
+                        Err(_) => break,
+                    }
+                }
+                Some(msg) = pong_rx.recv() => {
+                    if let Ok(text) = serde_json::to_string(&msg) {
+                        if sender.send(Message::Text(text.into())).await.is_err() {
+                            break;
+                        }
+                    }
                 }
             }
         }
@@ -138,7 +163,7 @@ async fn handle_socket(
                                 let _ = broadcast_tx.send(ws_msg);
                             }
                             WsMessage::Ping {} => {
-                                let _ = broadcast_tx.send(WsMessage::Pong {});
+                                let _ = pong_tx.send(WsMessage::Pong {}).await;
                             }
                             _ => {
                                 tracing::debug!("Unknown message from user_id={} in room_id={}", recv_user_id, recv_room_id);
@@ -163,17 +188,10 @@ async fn handle_socket(
         _ = recv_task => {},
     }
 
-    // 清理：用户离开房间
+    // 清理：用户离开房间（leave_room 内部已广播 UserLeft）
     let _ = state
         .room_manager
         .leave_room(&room_id, &user_id);
-
-    // 广播用户离开（获取房间可能已经不存在，忽略错误）
-    if let Some(room) = state.room_manager.get_room(&room_id) {
-        let _ = room.broadcast.send(WsMessage::UserLeft {
-            user_id: user_id.clone(),
-        });
-    }
 
     tracing::info!("User disconnected: room_id={}, user_id={}, username={}", room_id, user_id, username);
 }

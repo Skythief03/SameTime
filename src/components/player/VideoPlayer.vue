@@ -77,12 +77,15 @@ const uploadVideo = async () => {
       }
     };
 
-    xhr.onload = () => {
+    xhr.onload = async () => {
       isUploading.value = false;
       if (xhr.status === 200) {
         const result = JSON.parse(xhr.responseText);
         serverFileUrl.value = `${serverUrl}${result.url}`;
         showSourcePicker.value = false;
+        // 上传成功后，用本地文件加载到播放器
+        await playerStore.loadVideo(selected as string);
+        broadcastVideoHash();
       }
     };
 

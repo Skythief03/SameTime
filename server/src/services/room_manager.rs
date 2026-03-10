@@ -81,12 +81,6 @@ impl RoomManager {
         username: String,
     ) -> Option<Arc<Room>> {
         if let Some(room) = self.rooms.get(room_id) {
-            // 广播用户加入消息
-            let _ = room.broadcast.send(WsMessage::UserJoined {
-                user_id: user_id.clone(),
-                username: username.clone(),
-            });
-
             room.members.insert(
                 user_id.clone(),
                 RoomMember {
@@ -126,12 +120,12 @@ impl RoomManager {
             let remaining = room.members.len();
 
             // 如果房主离开，转移房主
-            let current_host = room.host_id.read().unwrap().clone();
+            let current_host = room.host_id.read().map(|h| h.clone()).unwrap_or_default();
             if current_host == user_id {
                 if let Some(first) = room.members.iter().next() {
                     let new_host = first.user_id.clone();
                     tracing::info!("Host transferred: room_id={}, old={}, new={}", room_id, user_id, new_host);
-                    *room.host_id.write().unwrap() = new_host;
+                    if let Ok(mut h) = room.host_id.write() { *h = new_host; }
                 }
             }
 
@@ -141,12 +135,12 @@ impl RoomManager {
 
     pub fn update_sync_state(&self, room_id: &str, timestamp: f64, is_playing: bool) {
         if let Some(room) = self.rooms.get(room_id) {
-            *room.current_time.write().unwrap() = timestamp;
-            *room.is_playing.write().unwrap() = is_playing;
+            if let Ok(mut t) = room.current_time.write() { *t = timestamp; }
+            if let Ok(mut p) = room.is_playing.write() { *p = is_playing; }
         }
     }
 
-    /// Remove empty rooms and rooms older than max_age_secs
+    /// Remove empty rooms and rooms older than max_age_secs with no active playback
     pub fn cleanup_stale_rooms(&self, max_age_secs: i64) {
         let now = chrono::Utc::now().timestamp();
         let mut to_remove = Vec::new();
@@ -158,10 +152,10 @@ impl RoomManager {
                 to_remove.push(entry.key().clone());
                 continue;
             }
-            // Remove rooms older than max age with no activity
+            // Remove rooms older than max age with no active playback
             if now - room.created_at > max_age_secs {
-                let is_playing = *room.is_playing.read().unwrap();
-                if !is_playing && room.members.is_empty() {
+                let is_playing = room.is_playing.read().map(|v| *v).unwrap_or(false);
+                if !is_playing {
                     to_remove.push(entry.key().clone());
                 }
             }

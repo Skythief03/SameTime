@@ -78,9 +78,9 @@ pub async fn get_room(
             AppError::NotFound("Room not found".to_string())
         })?;
 
-    let host_id = room.host_id.read().unwrap().clone();
-    let current_time = *room.current_time.read().unwrap();
-    let is_playing = *room.is_playing.read().unwrap();
+    let host_id = room.host_id.read().map(|h| h.clone()).unwrap_or_default();
+    let current_time = room.current_time.read().map(|v| *v).unwrap_or(0.0);
+    let is_playing = room.is_playing.read().map(|v| *v).unwrap_or(false);
 
     Ok(Json(RoomResponse {
         id: room.id.clone(),
@@ -138,9 +138,9 @@ pub async fn join_room(
             AppError::NotFound("Room not found".to_string())
         })?;
 
-    let host_id = room.host_id.read().unwrap().clone();
-    let current_time = *room.current_time.read().unwrap();
-    let is_playing = *room.is_playing.read().unwrap();
+    let host_id = room.host_id.read().map(|h| h.clone()).unwrap_or_default();
+    let current_time = room.current_time.read().map(|v| *v).unwrap_or(0.0);
+    let is_playing = room.is_playing.read().map(|v| *v).unwrap_or(false);
     let member_count = room.members.len();
 
     tracing::info!("User joined room: room_id={}, user_id={}, members={}", id, user_id, member_count);

@@ -126,10 +126,17 @@ pub fn mpv_play(file_path: String, state: tauri::State<MpvController>) -> Result
         *process = Some(child);
     }
 
-    // 等待 IPC socket 就绪
-    std::thread::sleep(std::time::Duration::from_millis(800));
+    // 等待 IPC socket 就绪（最多 5 秒）
+    let start = std::time::Instant::now();
+    let timeout = std::time::Duration::from_secs(5);
+    while start.elapsed() < timeout {
+        if state.send_command(r#"{ "command": ["get_property", "pause"] }"#).is_ok() {
+            return Ok(());
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
 
-    Ok(())
+    Err("mpv IPC not ready after 5s".to_string())
 }
 
 #[tauri::command]

@@ -162,12 +162,14 @@ export const usePlayerStore = defineStore("player", () => {
   // 清理资源
   const cleanup = async () => {
     stopPolling();
+    // 移除同步事件监听器
+    window.removeEventListener("sync-broadcast", handleSyncBroadcast as EventListener);
     try {
       await invoke("mpv_stop");
     } catch (error) {
       console.error("Failed to stop mpv:", error);
     }
-    
+
     videoPath.value = null;
     videoHash.value = null;
     currentTime.value = 0;

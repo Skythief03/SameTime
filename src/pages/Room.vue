@@ -77,31 +77,27 @@ const stopSyncHeartbeat = () => {
 };
 
 // 房主操作时立即发送同步
-const handleTogglePlay = () => {
-  playerStore.togglePlay();
+const handleTogglePlay = async () => {
+  await playerStore.togglePlay();
   if (roomStore.isHost) {
-    setTimeout(() => {
-      roomStore.sendMessage({
-        type: "sync_request",
-        room_id: roomId.value,
-        timestamp: playerStore.currentTime,
-        is_playing: playerStore.isPlaying,
-      });
-    }, 100);
+    roomStore.sendMessage({
+      type: "sync_request",
+      room_id: roomId.value,
+      timestamp: playerStore.currentTime,
+      is_playing: playerStore.isPlaying,
+    });
   }
 };
 
-const handleSeek = (position: number) => {
-  playerStore.seek(position);
+const handleSeek = async (position: number) => {
+  await playerStore.seek(position);
   if (roomStore.isHost) {
-    setTimeout(() => {
-      roomStore.sendMessage({
-        type: "sync_request",
-        room_id: roomId.value,
-        timestamp: position,
-        is_playing: playerStore.isPlaying,
-      });
-    }, 100);
+    roomStore.sendMessage({
+      type: "sync_request",
+      room_id: roomId.value,
+      timestamp: position,
+      is_playing: playerStore.isPlaying,
+    });
   }
 };
 

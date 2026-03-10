@@ -9,6 +9,7 @@ use chrono::Utc;
 use serde_json::json;
 use std::path::PathBuf;
 use tokio::fs;
+use tokio::io::AsyncWriteExt;
 use uuid::Uuid;
 
 use crate::error::{AppError, AppResult};
@@ -34,11 +35,21 @@ fn is_valid_media_magic(data: &[u8], ext: &str) -> bool {
 
 /// Sanitize filename to prevent path traversal
 fn sanitize_filename(name: &str) -> String {
-    let cleaned: String = name
+    // Extract just the filename component, stripping any directory path
+    let basename = std::path::Path::new(name)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("unknown");
+    // Remove control chars and null bytes
+    let cleaned: String = basename
         .chars()
         .filter(|c| !c.is_control() && *c != '\0')
         .collect();
-    cleaned.replace("../", "_").replace("..\\", "_").replace('/', "_").replace('\\', "_")
+    if cleaned.is_empty() || cleaned == "." || cleaned == ".." {
+        "unknown".to_string()
+    } else {
+        cleaned
+    }
 }
 
 pub async fn upload(
@@ -52,7 +63,7 @@ pub async fn upload(
         .await
         .map_err(|e| AppError::Internal(format!("Failed to create upload dir: {}", e)))?;
 
-    while let Some(field) = multipart
+    while let Some(mut field) = multipart
         .next_field()
         .await
         .map_err(|e| AppError::BadRequest(format!("Multipart error: {}", e)))?
@@ -84,32 +95,69 @@ pub async fn upload(
 
         tracing::info!("Uploading file: filename={}, ext={}", filename, ext);
 
-        let data = field
-            .bytes()
+        // 流式写入文件，同时统计大小并检查 magic bytes
+        let mut file = fs::File::create(&save_path)
             .await
-            .map_err(|e| AppError::BadRequest(format!("Failed to read file data: {}", e)))?;
+            .map_err(|e| AppError::Internal(format!("Failed to create file: {}", e)))?;
 
-        let file_size = data.len() as u64;
-        if file_size > state.config.max_file_size {
-            let max_mb = state.config.max_file_size / (1024 * 1024);
-            tracing::warn!("Upload rejected: file too large, size={}MB, max={}MB, filename={}", file_size / (1024 * 1024), max_mb, filename);
-            return Err(AppError::BadRequest(format!(
-                "File too large ({}MB). Maximum: {}MB",
-                file_size / (1024 * 1024), max_mb
-            )));
+        let mut file_size: u64 = 0;
+        let mut first_chunk = Vec::new();
+        let mut magic_checked = false;
+        let max_file_size = state.config.max_file_size;
+
+        while let Some(chunk) = field
+            .chunk()
+            .await
+            .map_err(|e| AppError::BadRequest(format!("Failed to read chunk: {}", e)))?
+        {
+            file_size += chunk.len() as u64;
+
+            // 检查文件大小限制
+            if file_size > max_file_size {
+                // 清理已写入的文件
+                drop(file);
+                let _ = fs::remove_file(&save_path).await;
+                let max_mb = max_file_size / (1024 * 1024);
+                tracing::warn!("Upload rejected: file too large, size>{}MB, max={}MB, filename={}", max_mb, max_mb, filename);
+                return Err(AppError::BadRequest(format!(
+                    "File too large. Maximum: {}MB",
+                    max_mb
+                )));
+            }
+
+            // 收集前几个字节用于 magic bytes 检查
+            if !magic_checked {
+                first_chunk.extend_from_slice(&chunk);
+                if first_chunk.len() >= 12 {
+                    if !is_valid_media_magic(&first_chunk, &ext) {
+                        drop(file);
+                        let _ = fs::remove_file(&save_path).await;
+                        tracing::warn!("Upload rejected: invalid magic bytes, filename={}, ext={}", filename, ext);
+                        return Err(AppError::BadRequest(
+                            "File content does not match expected media format".to_string(),
+                        ));
+                    }
+                    magic_checked = true;
+                }
+            }
+
+            file.write_all(&chunk)
+                .await
+                .map_err(|e| AppError::Internal(format!("Failed to write file: {}", e)))?;
         }
 
-        // Magic bytes validation
-        if !is_valid_media_magic(&data, &ext) {
+        // 如果文件太小未触发 magic 检查，在此补检
+        if !magic_checked && !is_valid_media_magic(&first_chunk, &ext) {
+            drop(file);
+            let _ = fs::remove_file(&save_path).await;
             tracing::warn!("Upload rejected: invalid magic bytes, filename={}, ext={}", filename, ext);
             return Err(AppError::BadRequest(
                 "File content does not match expected media format".to_string(),
             ));
         }
 
-        fs::write(&save_path, &data)
-            .await
-            .map_err(|e| AppError::Internal(format!("Failed to save file: {}", e)))?;
+        file.flush().await
+            .map_err(|e| AppError::Internal(format!("Failed to flush file: {}", e)))?;
 
         let now = Utc::now().timestamp();
 
@@ -184,19 +232,26 @@ pub async fn download(
         AppError::NotFound("File not found on disk".to_string())
     })?;
 
-    let data = fs::read(&path)
+    let file_handle = fs::File::open(&path)
         .await
-        .map_err(|e| AppError::Internal(format!("Failed to read file: {}", e)))?;
+        .map_err(|e| AppError::Internal(format!("Failed to open file: {}", e)))?;
 
-    tracing::info!("File served: id={}, filename={}, size={}KB", file_id, filename, data.len() / 1024);
+    let metadata = file_handle.metadata().await
+        .map_err(|e| AppError::Internal(format!("Failed to read file metadata: {}", e)))?;
+
+    tracing::info!("File served: id={}, filename={}, size={}KB", file_id, filename, metadata.len() / 1024);
+
+    let stream = tokio_util::io::ReaderStream::new(file_handle);
+    let body = Body::from_stream(stream);
 
     let response = Response::builder()
         .header(header::CONTENT_TYPE, "application/octet-stream")
+        .header(header::CONTENT_LENGTH, metadata.len())
         .header(
             header::CONTENT_DISPOSITION,
             format!("attachment; filename=\"{}\"", filename),
         )
-        .body(Body::from(data))
+        .body(body)
         .map_err(|e| AppError::Internal(e.to_string()))?;
 
     Ok(response)

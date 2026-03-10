@@ -81,18 +81,25 @@ export const useRoomStore = defineStore("room", () => {
     intentionalClose = false;
 
     if (ws.value) {
+      // 标记旧连接为有意关闭，避免触发重连
+      intentionalClose = true;
       ws.value.close();
+      ws.value = null;
+      intentionalClose = false;
     }
 
     connectionStatus.value = "connecting";
     const userId = localStorage.getItem("userId") || "";
     const username = localStorage.getItem("username") || "匿名用户";
     const wsUrl = `${getWsUrl()}/ws/${roomId}?user_id=${encodeURIComponent(userId)}&username=${encodeURIComponent(username)}`;
-    
+
+    let connected = false;
+
     return new Promise<void>((resolve, reject) => {
       const socket = new WebSocket(wsUrl);
 
       socket.onopen = () => {
+        connected = true;
         connectionStatus.value = "connected";
         reconnectAttempts = 0;
         ws.value = socket;
@@ -103,13 +110,18 @@ export const useRoomStore = defineStore("room", () => {
       socket.onclose = () => {
         connectionStatus.value = "disconnected";
         ws.value = null;
-        // 自动重连
-        attemptReconnect(roomId);
+        stopHeartbeat();
+        // 仅在已成功连接过的情况下才自动重连
+        if (connected) {
+          attemptReconnect(roomId);
+        }
       };
 
       socket.onerror = (error) => {
         connectionStatus.value = "disconnected";
-        reject(error);
+        if (!connected) {
+          reject(error);
+        }
       };
 
       socket.onmessage = (event) => {
@@ -235,6 +247,10 @@ export const useRoomStore = defineStore("room", () => {
       reconnectTimer = null;
     }
     if (ws.value) {
+      // 清除事件处理器防止触发 onclose 重连逻辑
+      ws.value.onclose = null;
+      ws.value.onerror = null;
+      ws.value.onmessage = null;
       ws.value.close();
       ws.value = null;
     }
