@@ -47,10 +47,9 @@ pub async fn create_room(
     .await?;
 
     // 在内存中创建房间
-    let username = "Host".to_string(); // 后续从 JWT 获取
     state
         .room_manager
-        .create_room(room_id.clone(), req.name.clone(), host_id.clone(), username);
+        .create_room(room_id.clone(), req.name.clone(), host_id.clone());
 
     tracing::info!("Room created: id={}, name={}", room_id, req.name);
 
@@ -128,11 +127,11 @@ pub async fn join_room(
     }
 
     let user_id = Uuid::new_v4().to_string(); // 后续从 JWT 获取
-    let username = "Guest".to_string();
 
+    // 仅验证房间存在，不在此处添加成员（成员通过 WebSocket 连接时添加）
     let room = state
         .room_manager
-        .join_room(&id, user_id.clone(), username.clone())
+        .get_room(&id)
         .ok_or_else(|| {
             tracing::warn!("Join room failed: room_id={} not found in memory", id);
             AppError::NotFound("Room not found".to_string())

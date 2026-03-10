@@ -38,7 +38,6 @@ impl RoomManager {
         room_id: String,
         name: String,
         host_id: String,
-        host_name: String,
     ) -> Arc<Room> {
         let (tx, _) = broadcast::channel(256);
 
@@ -54,18 +53,10 @@ impl RoomManager {
             created_at: chrono::Utc::now().timestamp(),
         });
 
-        room.members.insert(
-            host_id.clone(),
-            RoomMember {
-                user_id: host_id.clone(),
-                username: host_name.clone(),
-                is_ready: true,
-            },
-        );
-
+        // 不在此处添加成员，成员通过 WebSocket 连接时由 join_room 添加
         self.rooms.insert(room_id.clone(), room.clone());
 
-        tracing::info!("Room created in memory: id={}, name={}, host={}, total_rooms={}", room_id, name, host_name, self.rooms.len());
+        tracing::info!("Room created in memory: id={}, name={}, total_rooms={}", room_id, name, self.rooms.len());
 
         room
     }
