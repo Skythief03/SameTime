@@ -74,6 +74,7 @@ jobs:
         run: pnpm tauri build --bundles dmg
         env:
           TAURI_SIGNING_PRIVATE_KEY: ''
+          APPLE_SIGNING_IDENTITY: '-'
 
       - name: Build Tauri app (Windows)
         if: matrix.target == 'windows'
