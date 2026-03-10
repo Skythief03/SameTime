@@ -1,5 +1,6 @@
 import { ref, onUnmounted } from "vue";
 import type { WsMessage } from "@/types";
+import { getWsBaseUrl } from "@/platform";
 
 export type WsMessageHandler = (message: WsMessage) => void;
 
@@ -13,11 +14,6 @@ export function useWebSocket() {
   const MAX_RECONNECT_ATTEMPTS = 10;
   const BASE_RECONNECT_DELAY = 1000;
 
-  const getWsUrl = (): string => {
-    const serverUrl = localStorage.getItem("serverUrl") || "http://localhost:8080";
-    return serverUrl.replace(/^http/, "ws");
-  };
-
   const connect = (roomId: string): Promise<void> => {
     return new Promise((resolve, reject) => {
       if (ws.value) {
@@ -25,7 +21,7 @@ export function useWebSocket() {
       }
 
       status.value = "connecting";
-      const url = `${getWsUrl()}/ws/${roomId}`;
+      const url = `${getWsBaseUrl()}/ws/${roomId}`;
       const socket = new WebSocket(url);
 
       socket.onopen = () => {

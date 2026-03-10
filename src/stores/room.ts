@@ -2,6 +2,7 @@ import { defineStore } from "pinia";
 import { ref, computed } from "vue";
 import type { Room, RoomMember, WsMessage } from "@/types";
 import { showToast } from "@/utils/toast";
+import { getApiBaseUrl, getWsBaseUrl } from "@/platform";
 
 export const useRoomStore = defineStore("room", () => {
   const currentRoom = ref<Room | null>(null);
@@ -16,23 +17,14 @@ export const useRoomStore = defineStore("room", () => {
 
   const memberList = computed(() => Array.from(members.value.values()));
 
-  const getServerUrl = () => {
-    return localStorage.getItem("serverUrl") || "http://localhost:8080";
-  };
-
-  const getWsUrl = () => {
-    const serverUrl = getServerUrl();
-    return serverUrl.replace(/^http/, "ws");
-  };
 
   const createRoom = async (name: string, password?: string): Promise<Room> => {
-    const serverUrl = getServerUrl();
     const token = localStorage.getItem("token");
 
     const body: Record<string, string> = { name };
     if (password) body.password = password;
 
-    const response = await fetch(`${serverUrl}/api/rooms`, {
+    const response = await fetch(`${getApiBaseUrl()}/api/rooms`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -52,13 +44,12 @@ export const useRoomStore = defineStore("room", () => {
   };
 
   const joinRoom = async (roomId: string, password?: string): Promise<Room> => {
-    const serverUrl = getServerUrl();
     const token = localStorage.getItem("token");
 
     const body: Record<string, string> = {};
     if (password) body.password = password;
 
-    const response = await fetch(`${serverUrl}/api/rooms/${roomId}/join`, {
+    const response = await fetch(`${getApiBaseUrl()}/api/rooms/${roomId}/join`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -91,7 +82,7 @@ export const useRoomStore = defineStore("room", () => {
     connectionStatus.value = "connecting";
     const userId = localStorage.getItem("userId") || "";
     const username = localStorage.getItem("username") || "匿名用户";
-    const wsUrl = `${getWsUrl()}/ws/${roomId}?user_id=${encodeURIComponent(userId)}&username=${encodeURIComponent(username)}`;
+    const wsUrl = `${getWsBaseUrl()}/ws/${roomId}?user_id=${encodeURIComponent(userId)}&username=${encodeURIComponent(username)}`;
 
     let connected = false;
 

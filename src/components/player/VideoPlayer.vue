@@ -4,6 +4,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { usePlayerStore } from "@/stores/player";
 import { useRoomStore } from "@/stores/room";
+import { getApiBaseUrl } from "@/platform";
 
 const playerStore = usePlayerStore();
 const roomStore = useRoomStore();
@@ -73,7 +74,7 @@ const uploadVideo = async () => {
     isUploading.value = true;
     uploadProgress.value = 0;
 
-    const serverUrl = localStorage.getItem("serverUrl") || "http://localhost:8080";
+    const serverUrl = getApiBaseUrl();
     const assetUrl = convertFileSrc(selected as string);
     const response = await fetch(assetUrl);
     const blob = await response.blob();
